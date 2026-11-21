@@ -1,0 +1,105 @@
+[package]
+name = "s3viewer"
+version = "0.1.0"
+edition = "2024"
+description = "Files on S3, SFTP and FTP, and SSH terminals, in tabs: a fast native app written in Rust"
+license = "MIT"
+repository = "https://github.com/moulmandev/Farfile"
+readme = "README.md"
+
+[dependencies]
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
+anyhow = "1.0.104"
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc", "zeroize"] }
+async-trait = "0.1.92"
+aws-sdk-s3 = "1.161.0"
+chrono = "0.4.45"
+directories = "6.0.0"
+eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+egui = "0.36.2"
+egui-phosphor = { version = "0.14.0", features = ["fill"] }
+egui_extras = "0.36.2"
+flate2 = "1.1"
+futures-util = "0.3.34"
+getrandom = "0.4.3"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+keyring = "4.2.0"
+mime_guess = "2.0.5"
+open = { version = "5.4.5", features = ["shellexecute-on-windows"] }
+rand = "0.10.4"
+regex = "1.13.2"
+portable-pty = "0.9.0"
+rfd = "0.18.0"
+roxmltree = "0.21.2"
+# Named for the TLS provider handed to the updater's HTTP client
+# (src/update.rs): aws-lc-rs, the one already in the build.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+russh = "0.65.2"
+russh-sftp = "3.0.1"
+rustls-native-certs = "0.8"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+# Replacing the running executable when a portable copy updates itself
+# (Windows keeps a running .exe locked; this works around that).
+self-replace = "1.5"
+# Checking downloaded updates. Already in the build.
+sha2 = "0.11.1"
+tar = { version = "0.4", default-features = false }
+suppaftp = { version = "13.0.0", features = ["tokio-rustls-aws-lc-rs"] }
+# The built-in text editor: grammars of Sublime Text, matched with a pure
+# Rust regex engine (no C build), and bat's broad set of syntaxes and themes.
+syntect = { version = "5.3.0", default-features = false, features = ["parsing", "regex-fancy", "dump-load"] }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "fs", "io-util", "net", "sync", "macros", "time"] }
+tokio-rustls = "0.26"
+unicode-width = "0.2.3"
+# Looking for and downloading updates from GitHub (src/update.rs). No TLS
+# provider of its own: it is given the one above, and a second one would
+# leave rustls unable to pick for the S3 and FTP connections.
+ureq = { version = "3.5.1", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+vt100 = "0.18.1"
+zeroize = "1.9.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_WindowsProgramming",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# Dragging files out to Explorer (see `src/os_drag/win.rs`).
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_Marshal",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# `#[implement]` expects it by name.
+windows-core = "0.62"
+
+[build-dependencies]
+# The executable's icon and version details on Windows (see build.rs).
+winresource = "0.1"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+# The key of an encrypted export takes a fraction of a second to derive
+# once optimised, and many seconds otherwise: optimise it in debug builds too.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

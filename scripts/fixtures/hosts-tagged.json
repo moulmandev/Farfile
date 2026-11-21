@@ -1,0 +1,572 @@
+[
+ {
+  "id": "fx-0",
+  "name": "Web frontal 1",
+  "protocol": "sftp",
+  "endpoint": "web1.exemple.fr",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "Production",
+  "favorite": true,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod",
+   "web",
+   "nginx"
+  ]
+ },
+ {
+  "id": "fx-1",
+  "name": "Web frontal 2",
+  "protocol": "sftp",
+  "endpoint": "web2.exemple.fr",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "Production",
+  "favorite": false,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod",
+   "web"
+  ]
+ },
+ {
+  "id": "fx-2",
+  "name": "API",
+  "protocol": "sftp",
+  "endpoint": "api.exemple.fr",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "Production",
+  "favorite": true,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod",
+   "api"
+  ]
+ },
+ {
+  "id": "fx-3",
+  "name": "Base de données",
+  "protocol": "sftp",
+  "endpoint": "db.exemple.fr",
+  "port": 0,
+  "access_key": "postgres",
+  "folder": "Production",
+  "favorite": false,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod",
+   "postgres"
+  ]
+ },
+ {
+  "id": "fx-4",
+  "name": "Cache Redis",
+  "protocol": "sftp",
+  "endpoint": "203.0.113.21",
+  "port": 0,
+  "access_key": "root",
+  "folder": "Production",
+  "favorite": false,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod",
+   "redis"
+  ]
+ },
+ {
+  "id": "fx-5",
+  "name": "Répartiteur de charge",
+  "protocol": "sftp",
+  "endpoint": "lb.exemple.fr",
+  "port": 0,
+  "access_key": "root",
+  "folder": "Production",
+  "favorite": false,
+  "path_style": true,
+  "color": "red",
+  "tags": [
+   "prod"
+  ]
+ },
+ {
+  "id": "fx-6",
+  "name": "Sauvegardes",
+  "protocol": "s3",
+  "endpoint": "s3.eu-west-2.wasabisys.com",
+  "port": 0,
+  "access_key": "AKIAEXAMPLE",
+  "folder": "Production",
+  "favorite": true,
+  "path_style": true,
+  "color": "orange",
+  "tags": [
+   "prod",
+   "backup"
+  ]
+ },
+ {
+  "id": "fx-7",
+  "name": "Supervision",
+  "protocol": "sftp",
+  "endpoint": "monitor.exemple.fr",
+  "port": 0,
+  "access_key": "admin",
+  "folder": "Production",
+  "favorite": false,
+  "path_style": true,
+  "tags": [
+   "prod",
+   "monitoring"
+  ]
+ },
+ {
+  "id": "fx-8",
+  "name": "Web préprod",
+  "protocol": "sftp",
+  "endpoint": "web.preprod.exemple.fr",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "Préproduction",
+  "favorite": false,
+  "path_style": true,
+  "color": "yellow",
+  "tags": [
+   "preprod",
+   "web"
+  ]
+ },
+ {
+  "id": "fx-9",
+  "name": "API préprod",
+  "protocol": "sftp",
+  "endpoint": "api.preprod.exemple.fr",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "Préproduction",
+  "favorite": false,
+  "path_style": true,
+  "color": "yellow",
+  "tags": [
+   "preprod",
+   "api"
+  ]
+ },
+ {
+  "id": "fx-10",
+  "name": "Base préprod",
+  "protocol": "sftp",
+  "endpoint": "db.preprod.exemple.fr",
+  "port": 0,
+  "access_key": "postgres",
+  "folder": "Préproduction",
+  "favorite": false,
+  "path_style": true,
+  "color": "yellow",
+  "tags": [
+   "preprod",
+   "postgres"
+  ]
+ },
+ {
+  "id": "fx-11",
+  "name": "Lobby",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.10",
+  "port": 2022,
+  "access_key": "joueur.3e8",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true,
+  "color": "green",
+  "tags": [
+   "minecraft"
+  ]
+ },
+ {
+  "id": "fx-12",
+  "name": "Survie",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.11",
+  "port": 2022,
+  "access_key": "joueur.40d",
+  "folder": "Serveurs de jeu",
+  "favorite": true,
+  "path_style": true,
+  "color": "green",
+  "tags": [
+   "minecraft"
+  ]
+ },
+ {
+  "id": "fx-13",
+  "name": "Créatif",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.12",
+  "port": 2022,
+  "access_key": "joueur.432",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true,
+  "color": "green",
+  "tags": [
+   "minecraft"
+  ]
+ },
+ {
+  "id": "fx-14",
+  "name": "Mini-jeux",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.13",
+  "port": 2022,
+  "access_key": "joueur.457",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-15",
+  "name": "Skyblock",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.14",
+  "port": 2022,
+  "access_key": "joueur.47c",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-16",
+  "name": "Événements",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.15",
+  "port": 2022,
+  "access_key": "joueur.4a1",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-17",
+  "name": "Test plugins",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.16",
+  "port": 2022,
+  "access_key": "joueur.4c6",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-18",
+  "name": "Proxy",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.17",
+  "port": 2022,
+  "access_key": "joueur.4eb",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-19",
+  "name": "Carte dynamique",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.18",
+  "port": 2022,
+  "access_key": "joueur.510",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-20",
+  "name": "Archives des mondes",
+  "protocol": "sftp",
+  "endpoint": "198.51.100.19",
+  "port": 2022,
+  "access_key": "joueur.535",
+  "folder": "Serveurs de jeu",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-21",
+  "name": "Site vitrine",
+  "protocol": "ftp",
+  "endpoint": "ftp.atelier-dupont.example",
+  "port": 0,
+  "access_key": "dupont",
+  "folder": "Clients / Atelier Dupont",
+  "favorite": false,
+  "path_style": true,
+  "color": "purple",
+  "tags": [
+   "client"
+  ]
+ },
+ {
+  "id": "fx-22",
+  "name": "Boutique en ligne",
+  "protocol": "sftp",
+  "endpoint": "boutique.atelier-dupont.example",
+  "port": 0,
+  "access_key": "www-data",
+  "folder": "Clients / Atelier Dupont",
+  "favorite": false,
+  "path_style": true,
+  "color": "purple",
+  "tags": [
+   "client",
+   "boutique"
+  ]
+ },
+ {
+  "id": "fx-23",
+  "name": "Intranet",
+  "protocol": "sftp",
+  "endpoint": "intranet.atelier-dupont.example",
+  "port": 0,
+  "access_key": "admin",
+  "folder": "Clients / Atelier Dupont",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-24",
+  "name": "Portail citoyen",
+  "protocol": "sftp",
+  "endpoint": "portail.mairie.example",
+  "port": 0,
+  "access_key": "web",
+  "folder": "Clients / Mairie",
+  "favorite": false,
+  "path_style": true,
+  "color": "teal",
+  "tags": [
+   "client",
+   "mairie"
+  ]
+ },
+ {
+  "id": "fx-25",
+  "name": "Archives municipales",
+  "protocol": "ftp",
+  "endpoint": "archives.mairie.example",
+  "port": 0,
+  "access_key": "archives",
+  "folder": "Clients / Mairie",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-26",
+  "name": "Médiathèque",
+  "protocol": "s3",
+  "endpoint": "stockage.mairie.example",
+  "port": 0,
+  "access_key": "MEDIATHEQUE",
+  "folder": "Clients / Mairie",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-27",
+  "name": "NAS",
+  "protocol": "sftp",
+  "endpoint": "192.0.2.10",
+  "port": 0,
+  "access_key": "admin",
+  "folder": "Maison",
+  "favorite": false,
+  "path_style": true,
+  "color": "blue",
+  "tags": [
+   "maison"
+  ]
+ },
+ {
+  "id": "fx-28",
+  "name": "Raspberry Pi",
+  "protocol": "sftp",
+  "endpoint": "192.0.2.24",
+  "port": 0,
+  "access_key": "pi",
+  "folder": "Maison",
+  "favorite": false,
+  "path_style": true,
+  "color": "blue",
+  "tags": [
+   "maison",
+   "raspberry"
+  ]
+ },
+ {
+  "id": "fx-29",
+  "name": "Routeur",
+  "protocol": "sftp",
+  "endpoint": "192.0.2.1",
+  "port": 0,
+  "access_key": "root",
+  "folder": "Maison",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-30",
+  "name": "Domotique",
+  "protocol": "sftp",
+  "endpoint": "192.0.2.30",
+  "port": 0,
+  "access_key": "homeassistant",
+  "folder": "Maison",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-31",
+  "name": "CDN public",
+  "protocol": "s3",
+  "endpoint": "s3.eu-west-2.wasabisys.com",
+  "port": 0,
+  "access_key": "AKIACDN",
+  "folder": "",
+  "favorite": true,
+  "path_style": true,
+  "color": "pink",
+  "tags": [
+   "cdn"
+  ]
+ },
+ {
+  "id": "fx-32",
+  "name": "VPS perso",
+  "protocol": "sftp",
+  "endpoint": "vps.exemple.net",
+  "port": 0,
+  "access_key": "debian",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-33",
+  "name": "Serveur de build",
+  "protocol": "sftp",
+  "endpoint": "build.exemple.net",
+  "port": 0,
+  "access_key": "ci",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-34",
+  "name": "Miroir Debian",
+  "protocol": "ftp",
+  "endpoint": "ftp.fr.debian.example",
+  "port": 0,
+  "access_key": "",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-35",
+  "name": "Bac à sable",
+  "protocol": "sftp",
+  "endpoint": "203.0.113.77",
+  "port": 0,
+  "access_key": "root",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-36",
+  "name": "Ancien hébergement mutualisé avec un nom très long",
+  "protocol": "ftp",
+  "endpoint": "ftp.ancien-hebergeur.example",
+  "port": 0,
+  "access_key": "client4821",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-37",
+  "name": "Staging",
+  "protocol": "sftp",
+  "endpoint": "staging.exemple.net",
+  "port": 0,
+  "access_key": "deploy",
+  "folder": "",
+  "favorite": false,
+  "path_style": true,
+  "color": "yellow",
+  "tags": [
+   "staging"
+  ]
+ },
+ {
+  "id": "fx-38",
+  "name": "Dépôt Git",
+  "protocol": "sftp",
+  "endpoint": "git.exemple.net",
+  "port": 0,
+  "access_key": "git",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-39",
+  "name": "Messagerie",
+  "protocol": "sftp",
+  "endpoint": "mail.exemple.net",
+  "port": 0,
+  "access_key": "postmaster",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-40",
+  "name": "Tunnel",
+  "protocol": "sftp",
+  "endpoint": "203.0.113.5",
+  "port": 2222,
+  "access_key": "tunnel",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-41",
+  "name": "Serveur vocal",
+  "protocol": "sftp",
+  "endpoint": "vocal.exemple.net",
+  "port": 0,
+  "access_key": "root",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ },
+ {
+  "id": "fx-42",
+  "name": "Wiki",
+  "protocol": "sftp",
+  "endpoint": "wiki.exemple.net",
+  "port": 0,
+  "access_key": "www-data",
+  "folder": "",
+  "favorite": false,
+  "path_style": true
+ }
+]

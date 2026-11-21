@@ -1,0 +1,242 @@
+# Builds, tests and packages Farfile for Windows, Linux and macOS.
+#
+# - Every push and pull request: test and build on all three, and attach the
+#   packaged apps to the workflow run (Actions tab > the run > Artifacts).
+# - Pushing a tag such as v0.2.0 (it must match the version in Cargo.toml):
+#   the same, then publish a GitHub release with every download and a
+#   SHA256SUMS.txt that the apps check their updates against.
+#
+# Downloads, as the updater in src/update.rs expects them:
+#   Farfile-Setup-x64.exe              Windows installer (updates itself)
+#   farfile-portable-windows-x64.exe   Windows, standalone (asks to update)
+#   farfile-portable-linux-x64         Linux binary (asks to update)
+#   farfile-linux-x64.tar.gz           the same, with the README
+#   farfile-macos-universal.zip        macOS app
+#
+# The crate is still named s3viewer (its first working title), so cargo
+# builds target/release/s3viewer; every download is named farfile.
+
+name: Build
+
+on:
+  push:
+    branches: [main, master, dev]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          # The oldest Ubuntu image on offer, so the binary also runs on
+          # distributions with an older glibc.
+          - name: Linux
+            os: ubuntu-22.04
+          - name: macOS
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          fi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error title=Version mismatch::The tag is $GITHUB_REF_NAME but Cargo.toml says $version"
+            exit 1
+          fi
+
+      # The tests that need real servers are skipped unless their variables
+      # name some. When tests fail, their output is repeated as an
+      # annotation on the run's summary page, so the cause is visible
+      # without digging through the log.
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          if cargo test --locked 2>&1 | tee test.log; then
+            exit 0
+          fi
+          # Annotations are single-line: newlines travel as %0A.
+          details=$(sed -n '/^failures:$/,/^test result/p' test.log | head -n 120 \
+            | tr -d '\r' | sed 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')
+          echo "::error title=Tests failed on ${RUNNER_OS}::${details:-see the log}"
+          exit 1
+
+      # Official builds look for updates; builds made from source do not.
+      - name: Build (Windows, Linux)
+        if: runner.os != 'macOS'
+        env:
+          FARFILE_OFFICIAL_BUILD: "1"
+        run: cargo build --release --locked
+
+      # One binary that runs natively on both Apple silicon and Intel Macs.
+      - name: Build (macOS universal)
+        if: runner.os == 'macOS'
+        env:
+          FARFILE_OFFICIAL_BUILD: "1"
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          mkdir -p target/release
+          lipo -create -output target/release/s3viewer \
+            target/aarch64-apple-darwin/release/s3viewer \
+            target/x86_64-apple-darwin/release/s3viewer
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force upload | Out-Null
+          Copy-Item target/release/s3viewer.exe upload/farfile-portable-windows-x64.exe
+
+      # Inno Setup is not on every Windows runner image any more.
+      - name: Installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Out-Null
+          }
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          & $iscc /Qp "/DAppVersion=$version" installer\farfile.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/Farfile-Setup-x64.exe upload/
+
+      # Install silently as an update would, run the result, uninstall.
+      - name: Try the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          Start-Process -Wait -FilePath upload/Farfile-Setup-x64.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'
+          $dir = "$env:LOCALAPPDATA\Programs\Farfile"
+          if (-not (Test-Path "$dir\farfile-installed")) { throw "The install marker is missing from $dir" }
+          $out = (& "$dir\farfile.exe" --version | Out-String).Trim()
+          if ($out -ne "farfile $version") { throw "Unexpected --version output: '$out'" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Farfile.lnk")) { throw "No Start menu entry" }
+          Start-Process -Wait -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          # The uninstaller hands over to a copy of itself; give it time.
+          for ($i = 0; $i -lt 60 -and (Test-Path "$dir\farfile.exe"); $i++) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path "$dir\farfile.exe") { throw "The uninstaller left farfile.exe behind" }
+          Write-Output "Installed, ran ($out) and uninstalled."
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist/farfile upload
+          cp target/release/s3viewer dist/farfile/farfile
+          cp README.md LICENSE dist/farfile/
+          tar -C dist -czf upload/farfile-linux-x64.tar.gz farfile
+          cp target/release/s3viewer upload/farfile-portable-linux-x64
+          test "$(upload/farfile-portable-linux-x64 --version)" = "farfile $(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+
+      # A minimal .app bundle so it can be launched from Finder. It is signed
+      # ad hoc only: without an Apple Developer ID, macOS asks the user to
+      # confirm the first launch (right-click > Open).
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          app=dist/Farfile.app
+          mkdir -p "$app/Contents/MacOS"
+          cp target/release/s3viewer "$app/Contents/MacOS/farfile"
+          cat > "$app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Farfile</string>
+            <key>CFBundleDisplayName</key><string>Farfile</string>
+            <key>CFBundleIdentifier</key><string>dev.farfile.app</string>
+            <key>CFBundleExecutable</key><string>farfile</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>$version</string>
+            <key>CFBundleVersion</key><string>$version</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          codesign --force --deep --sign - "$app"
+          mkdir -p upload
+          ditto -c -k --keepParent "$app" upload/farfile-macos-universal.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: farfile-${{ matrix.name }}
+          path: upload/*
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: packages
+          merge-multiple: true
+
+      # What the apps check each update against, besides GitHub's own record.
+      - name: Checksums
+        run: |
+          cd packages
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+
+      # This version's section of CHANGELOG.md, followed by GitHub's notes.
+      - name: Release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## / { if (on) exit; on = ($2 == v); next } on' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::warning title=No release notes::CHANGELOG.md has no section for $version"
+          fi
+          cat notes.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: packages/*
+          body_path: notes.md
+          generate_release_notes: true

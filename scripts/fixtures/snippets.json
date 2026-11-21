@@ -1,0 +1,46 @@
+{
+ "snippets": [
+  {
+   "id": "fx-snippet-0",
+   "name": "Espace disque",
+   "command": "df -h",
+   "description": "Place libre sur chaque disque",
+   "press_enter": true
+  },
+  {
+   "id": "fx-snippet-1",
+   "name": "Qui suis-je",
+   "command": "echo \"$(whoami)@$(hostname) — $(uname -sr)\"",
+   "description": "",
+   "press_enter": true
+  },
+  {
+   "id": "fx-snippet-2",
+   "name": "Lister un dossier",
+   "command": "ls -la {{dossier:/config}} | head -n {{lignes}}",
+   "description": "Les premières entrées d'un dossier",
+   "press_enter": true
+  },
+  {
+   "id": "fx-snippet-3",
+   "name": "Redémarrer un service",
+   "command": "sudo systemctl restart {{service:nginx}}",
+   "description": "Tapé sans Entrée : à relire avant de lancer",
+   "press_enter": false
+  },
+  {
+   "id": "fx-snippet-4",
+   "name": "Système",
+   "command": "uname -a\ncat /etc/os-release | head -n 2",
+   "description": "Noyau et distribution",
+   "press_enter": true
+  },
+  {
+   "id": "fx-snippet-5",
+   "name": "Processus gourmands",
+   "command": "top -b -n 1 | head -n 12",
+   "description": "",
+   "press_enter": true
+  }
+ ]
+}
