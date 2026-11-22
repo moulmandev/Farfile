@@ -215,7 +215,7 @@ pub fn color_swatches(ui: &mut Ui, p: &Palette, color: &mut Option<HostColor>) {
             } else if response.hovered() {
                 painter.circle_stroke(center, 11.0, Stroke::new(1.0, p.faint));
             }
-            let label = choice.map_or("Aucune couleur", HostColor::label);
+            let label = choice.map_or(tr!("Aucune couleur"), HostColor::label);
             if response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(label).clicked() {
                 *color = choice;
             }
@@ -242,7 +242,7 @@ fn color_menu(ui: &mut Ui, p: &Palette, current: Option<HostColor>) -> Option<Op
                 painter.circle_stroke(dot, 5.5, Stroke::new(1.2, p.muted));
             }
         }
-        let label = choice.map_or("Aucune", HostColor::label);
+        let label = choice.map_or(trc!("couleur", "Aucune"), HostColor::label);
         painter.text(
             pos2(rect.left() + 30.0, rect.center().y),
             Align2::LEFT_CENTER,
@@ -279,15 +279,15 @@ fn menu_item(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> bool {
 /// export.
 pub fn host_menu(ui: &mut Ui, p: &Palette, profile: &Profile, actions: &mut Vec<Action>) {
     let id = || profile.id.clone();
-    ui.menu_button(format!("{}  Couleur", icon::PALETTE), |ui| {
+    ui.menu_button(format!("{}  {}", icon::PALETTE, tr!("Couleur")), |ui| {
         if let Some(color) = color_menu(ui, p, profile.color) {
             actions.push(Action::Hosts(HostsAction::SetColor(id(), color)));
         }
     });
-    if menu_item(ui, format!("{}  Étiquettes…", icon::TAG)) {
+    if menu_item(ui, format!("{}  {}", icon::TAG, tr!("Étiquettes…"))) {
         actions.push(Action::Hosts(HostsAction::AskTags(id())));
     }
-    if menu_item(ui, format!("{}  Exporter…", icon::EXPORT)) {
+    if menu_item(ui, format!("{}  {}", icon::EXPORT, tr!("Exporter…"))) {
         actions.push(Action::Hosts(HostsAction::AskExport(ExportScope::Host(id()))));
     }
 }
@@ -295,7 +295,7 @@ pub fn host_menu(ui: &mut Ui, p: &Palette, profile: &Profile, actions: &mut Vec<
 /// The entry of the menu of a tab: the colour of its connection.
 pub fn tab_menu(ui: &mut Ui, p: &Palette, profile_id: &str, actions: &mut Vec<Action>) {
     let current = color_of(ui.ctx(), profile_id);
-    ui.menu_button(format!("{}  Couleur de la connexion", icon::PALETTE), |ui| {
+    ui.menu_button(format!("{}  {}", icon::PALETTE, tr!("Couleur de la connexion")), |ui| {
         if let Some(color) = color_menu(ui, p, current) {
             actions.push(Action::Hosts(HostsAction::SetColor(profile_id.to_owned(), color)));
         }
@@ -305,19 +305,19 @@ pub fn tab_menu(ui: &mut Ui, p: &Palette, profile_id: &str, actions: &mut Vec<Ac
 /// The entries of the menu of a folder: a colour for all it holds, and its
 /// export.
 pub fn folder_menu(ui: &mut Ui, p: &Palette, path: &str, actions: &mut Vec<Action>) {
-    ui.menu_button(format!("{}  Couleur des connexions", icon::PALETTE), |ui| {
+    ui.menu_button(format!("{}  {}", icon::PALETTE, tr!("Couleur des connexions")), |ui| {
         if let Some(color) = color_menu(ui, p, None) {
             actions.push(Action::Hosts(HostsAction::SetFolderColor(path.to_owned(), color)));
         }
     });
-    if menu_item(ui, format!("{}  Exporter le dossier…", icon::EXPORT)) {
+    if menu_item(ui, format!("{}  {}", icon::EXPORT, tr!("Exporter le dossier…"))) {
         actions.push(Action::Hosts(HostsAction::AskExport(ExportScope::Folder(path.to_owned()))));
     }
 }
 
 /// The export button of the header of the list.
 pub fn export_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    let tooltip = "Exporter les connexions… (fichier chiffré par mot de passe)";
+    let tooltip = tr!("Exporter les connexions… (fichier chiffré par mot de passe)");
     if icon_button(ui, p, icon::EXPORT, tooltip, true).clicked() {
         actions.push(Action::Hosts(HostsAction::AskExport(ExportScope::All)));
     }
@@ -328,10 +328,12 @@ pub fn restore_item(ui: &mut Ui, actions: &mut Vec<Action>) {
     let enabled = published(ui.ctx()).restore_tabs;
     ui.separator();
     let mark = if enabled { icon::CHECK } else { "    " };
-    let button = egui::Button::new(format!("{mark}  Rouvrir les onglets au démarrage"));
+    let button = egui::Button::new(format!("{mark}  {}", tr!("Rouvrir les onglets au démarrage")));
     if ui
         .add(button)
-        .on_hover_text("Les onglets ouverts à la fermeture reviennent au prochain lancement ;\nseuls ceux affichés se connectent tout de suite.")
+        .on_hover_text(tr!(
+            "Les onglets ouverts à la fermeture reviennent au prochain lancement ;\nseuls ceux affichés se connectent tout de suite."
+        ))
         .clicked()
     {
         ui.close();
@@ -352,11 +354,15 @@ pub fn vault_source(ui: &mut Ui, p: &Palette, vault: &mut bool, outcome: &mut Ou
                 ui.label(RichText::new(icon::LOCK_KEY).size(20.0).color(p.accent));
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    ui.label(RichText::new("Sauvegarde chiffrée de Farfile").color(p.text));
-                    ui.label(small(p, format!("Un fichier .{} exporté ici ou sur un autre ordinateur", hosts::vault::EXTENSION)));
+                    ui.label(RichText::new(tr!("Sauvegarde chiffrée de Farfile")).color(p.text));
+                    let hint = tr!(
+                        "Un fichier .{extension} exporté ici ou sur un autre ordinateur",
+                        extension = hosts::vault::EXTENSION
+                    );
+                    ui.label(small(p, hint));
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button(format!("{}  Ouvrir…", icon::FOLDER_OPEN)).clicked() {
+                    if ui.button(format!("{}  {}", icon::FOLDER_OPEN, tr!("Ouvrir…"))).clicked() {
                         *vault = true;
                         *outcome = Outcome::Confirmed;
                     }
@@ -427,7 +433,7 @@ fn chip(ui: &mut Ui, p: &Palette, text: &str, removable: bool) -> bool {
     let response = ui
         .interact(button, Id::new(("tag-editor-remove", text)), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text("Retirer");
+        .on_hover_text(tr!("Retirer"));
     if response.hovered() {
         ui.painter().rect_filled(button, 4, p.border);
     }
@@ -484,7 +490,7 @@ pub fn tag_editor(
                         removed = Some(index);
                     }
                 }
-                let hint = if tags.is_empty() { "Ajouter des étiquettes : prod, web…" } else { "Ajouter…" };
+                let hint = if tags.is_empty() { tr!("Ajouter des étiquettes : prod, web…") } else { tr!("Ajouter…") };
                 // The rest of the line, or a line of its own when too short.
                 let left = ui.available_size_before_wrap().x;
                 let room = if left >= 110.0 { left } else { ui.available_width() };
@@ -651,7 +657,7 @@ fn suggestion(ui: &mut Ui, p: &Palette, tag: &str, highlighted: bool) -> Respons
 /// the form, right below the name and the folder.
 pub fn form_section(ui: &mut Ui, p: &Palette, profile: &mut Profile, field: &mut TagField) {
     ui.horizontal(|ui| {
-        ui.label(small(p, "Couleur"));
+        ui.label(small(p, tr!("Couleur")));
         ui.add_space(4.0);
         color_swatches(ui, p, &mut profile.color);
     });
@@ -670,8 +676,8 @@ pub struct TagsForm {
 
 fn tags_dialog(ui: &mut Ui, p: &Palette, form: &mut TagsForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(380.0);
-    ui.label(RichText::new("Étiquettes").font(semibold(17.0)).color(p.text));
-    ui.add(Label::new(muted(p, format!("« {} »", form.title))).truncate());
+    ui.label(RichText::new(tr!("Étiquettes")).font(semibold(17.0)).color(p.text));
+    ui.add(Label::new(muted(p, tr!("« {name} »", name = form.title))).truncate());
     ui.add_space(10.0);
     let empty = form.field.input.trim().is_empty();
     let enter = ui.input(|input| input.key_pressed(Key::Enter));
@@ -682,7 +688,7 @@ fn tags_dialog(ui: &mut Ui, p: &Palette, form: &mut TagsForm, first_frame: bool,
     ui.add_space(6.0);
     ui.label(small(
         p,
-        "Entrée ou virgule pour ajouter. Dans la liste et avec Ctrl+K,\n#étiquette retrouve les connexions qui la portent.",
+        tr!("Entrée ou virgule pour ajouter. Dans la liste et avec Ctrl+K,\n#étiquette retrouve les connexions qui la portent."),
     ));
     // Enter in an empty field saves, as in the other small dialogs.
     if enter && empty {
@@ -690,11 +696,11 @@ fn tags_dialog(ui: &mut Ui, p: &Palette, form: &mut TagsForm, first_frame: bool,
     }
     ui.add_space(12.0);
     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-        if primary_button(ui, p, "Enregistrer", true).clicked() {
+        if primary_button(ui, p, tr!("Enregistrer"), true).clicked() {
             form.field.commit(&mut form.tags);
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

@@ -20,6 +20,8 @@
 //! - `S3V_DEV_SYNC_DIR`: the local folder a synchronisation compares with,
 //!   in place of the picker.
 //! - `S3V_DEV_OFFSCREEN`: create the window off screen and without focus.
+//! - `S3V_DEV_LANG`: the language of the interface (`en`, `fr`, `de`, `es`),
+//!   whatever the preferences and the system say.
 //! - `S3V_DEV_SCRIPT`: `;`-separated steps played one after the other, such
 //!   as `select a.zip; download; wait; theme`. See `App::run_dev_step`.
 
@@ -138,6 +140,10 @@ pub fn script() -> std::collections::VecDeque<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub fn language() -> Option<crate::i18n::Lang> {
+    var("S3V_DEV_LANG").and_then(|code| crate::i18n::Lang::from_code(&code))
 }
 
 pub fn offscreen() -> bool {

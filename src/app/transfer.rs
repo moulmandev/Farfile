@@ -217,7 +217,7 @@ impl App {
                 return None;
             }
             rfd::FileDialog::new()
-                .set_title(format!("Dossier local à synchroniser avec « {} »", remote.name()))
+                .set_title(tr!("Dossier local à synchroniser avec « {name} »", name = remote.name()))
                 .pick_folder()
         });
         // The picker was closed: nothing to synchronise with.

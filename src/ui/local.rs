@@ -113,24 +113,24 @@ pub fn shells_menu(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
         }
     }
     if !pty::wsl_known() {
-        ui.label(RichText::new("Recherche des distributions WSL…").size(11.5).color(p.faint));
+        ui.label(RichText::new(tr!("Recherche des distributions WSL…")).size(11.5).color(p.faint));
     }
 }
 
 /// What can be done with "Cet ordinateur": its menu in the sidebar.
 fn computer_menu(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
     ui.set_min_width(230.0);
-    if item(ui, format!("{}  Ouvrir", icon::DESKTOP)) {
+    if item(ui, format!("{}  {}", icon::DESKTOP, tr!("Ouvrir"))) {
         actions.push(Action::Connect(ID.to_owned()));
     }
-    if item(ui, format!("{}  Ouvrir dans un nouvel onglet", icon::PLUS)) {
+    if item(ui, format!("{}  {}", icon::PLUS, tr!("Ouvrir dans un nouvel onglet"))) {
         actions.push(Action::OpenTab(ID.to_owned(), None));
     }
-    if item(ui, format!("{}  Fichiers et terminal", icon::SQUARE_SPLIT_VERTICAL)) {
+    if item(ui, format!("{}  {}", icon::SQUARE_SPLIT_VERTICAL, tr!("Fichiers et terminal"))) {
         actions.push(Action::OpenTab(ID.to_owned(), Some(Panes::Both)));
     }
     ui.separator();
-    ui.menu_button(format!("{}  Nouveau terminal local", icon::TERMINAL_WINDOW), |ui| shells_menu(ui, p, actions));
+    ui.menu_button(format!("{}  {}", icon::TERMINAL_WINDOW, tr!("Nouveau terminal local")), |ui| shells_menu(ui, p, actions));
 }
 
 /// "Cet ordinateur", at the top of the sidebar: its files on a click, its
@@ -170,7 +170,7 @@ pub fn sidebar_entry(ui: &mut Ui, p: &Palette, active: Option<&str>, open: &[&st
             pos2(rect.right() - if buttons { 34.0 } else { 8.0 }, rect.bottom()),
         );
         let mut label = ui.new_child(egui::UiBuilder::new().max_rect(text).layout(Layout::left_to_right(Align::Center)));
-        label.add(Label::new(RichText::new(TITLE).color(p.text)).truncate().selectable(false));
+        label.add(Label::new(RichText::new(crate::i18n::lookup(TITLE)).color(p.text)).truncate().selectable(false));
     }
 
     if buttons {
@@ -186,7 +186,7 @@ pub fn sidebar_entry(ui: &mut Ui, p: &Palette, active: Option<&str>, open: &[&st
             FontId::proportional(15.0),
             if shells.hovered() { p.text } else { p.muted },
         );
-        let shells = shells.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Nouveau terminal local");
+        let shells = shells.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tr!("Nouveau terminal local"));
         Popup::menu(&shells).show(|ui| shells_menu(ui, p, actions));
     }
 
@@ -198,14 +198,14 @@ pub fn sidebar_entry(ui: &mut Ui, p: &Palette, active: Option<&str>, open: &[&st
     }
     response.context_menu(|ui| computer_menu(ui, p, actions));
     if !menu_open {
-        response.on_hover_text("Les disques et dossiers de ce PC, et ses terminaux");
+        response.on_hover_text(tr!("Les disques et dossiers de ce PC, et ses terminaux"));
     }
     ui.add_space(6.0);
 }
 
 /// The same, in the folded sidebar.
 pub fn rail_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    let button = icon_button(ui, p, icon::DESKTOP, TITLE, true);
+    let button = icon_button(ui, p, icon::DESKTOP, crate::i18n::lookup(TITLE), true);
     if button.clicked() {
         actions.push(Action::Connect(ID.to_owned()));
     }
@@ -214,27 +214,28 @@ pub fn rail_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
 
 /// The start page's way to a local shell, next to its other buttons.
 pub fn welcome_buttons(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    let button = ui.button(format!("{}  Terminal local  {}", icon::TERMINAL_WINDOW, icon::CARET_DOWN));
+    let button = ui.button(format!("{}  {}  {}", icon::TERMINAL_WINDOW, tr!("Terminal local"), icon::CARET_DOWN));
     Popup::menu(&button).show(|ui| shells_menu(ui, p, actions));
 }
 
 /// The "+" at the end of a row of tabs: this computer, its shells, or a
 /// connection.
 pub fn new_tab_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    let button = icon_button(ui, p, icon::PLUS, "Nouvel onglet", true);
+    let button = icon_button(ui, p, icon::PLUS, tr!("Nouvel onglet"), true);
     Popup::menu(&button).show(|ui| {
         ui.set_min_width(240.0);
-        if item(ui, format!("{}  {TITLE}", icon::DESKTOP)) {
+        if item(ui, format!("{}  {}", icon::DESKTOP, crate::i18n::lookup(TITLE))) {
             actions.push(Action::OpenTab(ID.to_owned(), None));
         }
-        ui.menu_button(format!("{}  Nouveau terminal local", icon::TERMINAL_WINDOW), |ui| shells_menu(ui, p, actions));
+        ui.menu_button(format!("{}  {}", icon::TERMINAL_WINDOW, tr!("Nouveau terminal local")), |ui| shells_menu(ui, p, actions));
         ui.separator();
-        let palette = Button::new(format!("{}  Ouvrir une connexion…", icon::MAGNIFYING_GLASS)).shortcut_text("Ctrl+K");
+        let palette = Button::new(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Ouvrir une connexion…")));
+        let palette = palette.shortcut_text(tr!("Ctrl+K"));
         if ui.add(palette).clicked() {
             actions.push(Action::QuickOpen);
             ui.close();
         }
-        if item(ui, format!("{}  Nouvelle connexion…", icon::PLUGS_CONNECTED)) {
+        if item(ui, format!("{}  {}", icon::PLUGS_CONNECTED, tr!("Nouvelle connexion…"))) {
             actions.push(Action::NewProfile);
         }
     });
@@ -242,7 +243,7 @@ pub fn new_tab_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
 
 /// "Ouvrir Cet ordinateur à côté", for the menu of a tab of a server.
 pub fn tab_menu_item(ui: &mut Ui, tab: &Tab, actions: &mut Vec<Action>) {
-    if tab.protocol != Protocol::Local && item(ui, format!("{}  Ouvrir {TITLE} à côté", icon::COLUMNS)) {
+    if tab.protocol != Protocol::Local && item(ui, format!("{}  {}", icon::COLUMNS, tr!("Ouvrir Cet ordinateur à côté"))) {
         actions.push(Action::Local(LocalAction::OpenBeside(Some(tab.id))));
     }
 }
@@ -254,8 +255,8 @@ pub fn beside_button(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut 
     if session.storage.local().is_some() || beside {
         return;
     }
-    let tooltip = format!("Ouvrir {TITLE} à côté, pour y copier des fichiers en les faisant glisser");
-    if icon_button(ui, p, icon::COLUMNS, &tooltip, true).clicked() {
+    let tooltip = tr!("Ouvrir Cet ordinateur à côté, pour y copier des fichiers en les faisant glisser");
+    if icon_button(ui, p, icon::COLUMNS, tooltip, true).clicked() {
         actions.push(Action::Local(LocalAction::OpenBeside(None)));
     }
 }
@@ -333,9 +334,9 @@ pub fn drop_on_listing(ui: &mut Ui, p: &Palette, area: Rect, session: &Session, 
         return;
     }
     let text = match (&row, session.writable()) {
-        (Some(name), _) => format!("{}  Copier dans « {name} »", icon::COPY),
-        (None, true) => format!("{}  Copier ici", icon::COPY),
-        (None, false) => format!("{}  Ouvrez d'abord un dossier pour y copier", icon::PROHIBIT),
+        (Some(name), _) => format!("{}  {}", icon::COPY, tr!("Copier dans « {name} »", name)),
+        (None, true) => format!("{}  {}", icon::COPY, tr!("Copier ici")),
+        (None, false) => format!("{}  {}", icon::PROHIBIT, tr!("Ouvrez d'abord un dossier pour y copier")),
     };
     let layer = egui::LayerId::new(Order::Foreground, Id::new(("local-drop-zone", key)));
     let painter = ui.ctx().layer_painter(layer);
@@ -365,8 +366,8 @@ pub fn copy_menu_item(ui: &mut Ui, session: &Session, suffix: &str, actions: &mu
     let Some(other) = session.other_view.as_ref().filter(|other| other.writable) else {
         return;
     };
-    let button = Button::new(format!("{}  Copier vers l'autre vue{suffix}", icon::COPY)).shortcut_text("F5");
-    if ui.add(button).on_hover_text(format!("Dans {}", other.label)).clicked() {
+    let button = Button::new(format!("{}  {}{suffix}", icon::COPY, tr!("Copier vers l'autre vue"))).shortcut_text("F5");
+    if ui.add(button).on_hover_text(tr!("Dans {place}", place = other.label)).clicked() {
         actions.push(Action::Local(LocalAction::CopyToOther { ask: false }));
         ui.close();
     }
@@ -389,27 +390,27 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut LocalDialog, outcome: &mut 
         LocalDialog::Trash { summary, recycle: true, .. } => ask(
             ui,
             p,
-            "Placer dans la corbeille ?",
-            &format!("{summary}\nVous pourrez le récupérer depuis la Corbeille de Windows."),
-            &format!("{}  Mettre à la corbeille", icon::TRASH),
+            tr!("Placer dans la corbeille ?"),
+            &format!("{summary}\n{}", tr!("Vous pourrez le récupérer depuis la Corbeille de Windows.")),
+            &format!("{}  {}", icon::TRASH, tr!("Mettre à la corbeille")),
             false,
             outcome,
         ),
         LocalDialog::Trash { summary, .. } => ask(
             ui,
             p,
-            "Supprimer définitivement ?",
-            &format!("{summary}\nCe lecteur n'a pas de corbeille : cette action est irréversible."),
-            "Supprimer",
+            tr!("Supprimer définitivement ?"),
+            &format!("{summary}\n{}", tr!("Ce lecteur n'a pas de corbeille : cette action est irréversible.")),
+            tr!("Supprimer"),
             true,
             outcome,
         ),
         LocalDialog::Copy { summary, .. } => ask(
             ui,
             p,
-            "Copier vers l'autre vue ?",
+            tr!("Copier vers l'autre vue ?"),
             summary,
-            &format!("{}  Copier", icon::COPY),
+            &format!("{}  {}", icon::COPY, tr!("Copier")),
             false,
             outcome,
         ),
@@ -436,7 +437,7 @@ fn ask(ui: &mut Ui, p: &Palette, heading: &str, body: &str, action: &str, destru
         if confirmed {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -445,19 +446,27 @@ fn ask(ui: &mut Ui, p: &Palette, heading: &str, body: &str, action: &str, destru
 /// What deleting the selection of this computer does, in a sentence.
 pub fn trash_summary(items: &[Item], recycle: bool) -> String {
     let folders = items.iter().filter(|item| item.is_dir).count();
-    let (one, many) = if recycle {
-        ("sera placé dans la corbeille", "seront placés dans la corbeille")
-    } else {
-        ("sera supprimé", "seront supprimés")
-    };
-    match (items, folders) {
-        ([only], 0) => format!("« {} » {one}.", only.path.name()),
-        ([only], _) => format!("Le dossier « {} » et son contenu {many}.", only.path.name()),
-        (items, 0) => format!("{} éléments {many}.", items.len()),
-        (items, _) => format!(
-            "{} éléments, dont {}, {many}.",
-            items.len(),
-            crate::format::count(folders, "dossier", "dossiers")
+    let count = items.len();
+    match (items, folders, recycle) {
+        ([only], 0, true) => tr!("« {name} » sera placé dans la corbeille.", name = only.path.name()),
+        ([only], _, true) => {
+            tr!("Le dossier « {name} » et son contenu seront placés dans la corbeille.", name = only.path.name())
+        }
+        (_, 0, true) => tr!("{count} éléments seront placés dans la corbeille.", count),
+        (_, _, true) => trn!(
+            folders,
+            "{count} éléments, dont {n} dossier, seront placés dans la corbeille.",
+            "{count} éléments, dont {n} dossiers, seront placés dans la corbeille.",
+            count
+        ),
+        ([only], 0, false) => tr!("« {name} » sera supprimé.", name = only.path.name()),
+        ([only], _, false) => tr!("Le dossier « {name} » et son contenu seront supprimés.", name = only.path.name()),
+        (_, 0, false) => tr!("{count} éléments seront supprimés.", count),
+        (_, _, false) => trn!(
+            folders,
+            "{count} éléments, dont {n} dossier, seront supprimés.",
+            "{count} éléments, dont {n} dossiers, seront supprimés.",
+            count
         ),
     }
 }

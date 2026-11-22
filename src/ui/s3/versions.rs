@@ -68,7 +68,7 @@ impl Versions {
     /// Returns true to close.
     pub fn show(&mut self, ui: &mut Ui, p: &Palette, requests: &mut Vec<Request>) -> bool {
         ui.set_width(WIDTH);
-        heading(ui, p, &format!("Versions de « {} »", self.path.name()));
+        heading(ui, p, &tr!("Versions de « {name} »", name = self.path.name()));
         subject(ui, p, icon::FILE, &self.path.to_string());
         ui.add_space(DIALOG_GAP);
 
@@ -86,9 +86,9 @@ impl Versions {
                 ui.allocate_ui(egui::vec2(WIDTH, LIST_HEIGHT), |ui| {
                     ui.set_min_height(LIST_HEIGHT);
                     let title = if error.unsupported() {
-                        "Ce serveur ne gère pas les versions"
+                        tr!("Ce serveur ne gère pas les versions")
                     } else {
-                        "Impossible de lister les versions"
+                        tr!("Impossible de lister les versions")
                     };
                     placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, title, "");
                     ui.vertical_centered(|ui| ui.add(Label::new(muted(p, failure(error))).wrap()));
@@ -102,12 +102,12 @@ impl Versions {
                         p,
                         icon::CLOCK_COUNTER_CLOCKWISE,
                         p.faint,
-                        "La gestion des versions n'est pas activée sur ce bucket",
-                        "Une fois activée, chaque modification ou suppression conserve l'état précédent du fichier.",
+                        tr!("La gestion des versions n'est pas activée sur ce bucket"),
+                        tr!("Une fois activée, chaque modification ou suppression conserve l'état précédent du fichier."),
                     );
                     ui.add_space(10.0);
                     ui.vertical_centered(|ui| {
-                        settings = ui.button(format!("{}  Réglages du bucket…", icon::GEAR_SIX)).clicked();
+                        settings = ui.button(format!("{}  {}", icon::GEAR_SIX, tr!("Réglages du bucket…"))).clicked();
                     });
                 });
             }
@@ -118,8 +118,10 @@ impl Versions {
                         p,
                         icon::INFO,
                         p.folder,
-                        "La gestion des versions est suspendue : les versions passées restent, mais la prochaine \
-                         modification remplacera la version « null ».",
+                        tr!(
+                            "La gestion des versions est suspendue : les versions passées restent, mais la \
+                             prochaine modification remplacera la version « null »."
+                        ),
                     );
                     ui.add_space(8.0);
                 }
@@ -135,22 +137,22 @@ impl Versions {
             let when = version.modified.map(precise_date).unwrap_or_else(|| "?".to_owned());
             let what = if version.delete_marker {
                 if version.latest {
-                    format!("Le marqueur de suppression du {when} sera retiré : le fichier réapparaîtra.")
+                    tr!("Le marqueur de suppression du {when} sera retiré : le fichier réapparaîtra.", when)
                 } else {
-                    format!("Le marqueur de suppression du {when} sera retiré.")
+                    tr!("Le marqueur de suppression du {when} sera retiré.", when)
                 }
             } else {
-                format!("La version du {when} sera supprimée définitivement. Cette action est irréversible.")
+                tr!("La version du {when} sera supprimée définitivement. Cette action est irréversible.", when)
             };
             note(ui, p, icon::WARNING, p.danger, &what);
             ui.add_space(8.0);
             buttons(ui, |ui| {
-                let label = if version.delete_marker { "Retirer le marqueur" } else { "Supprimer la version" };
+                let label = if version.delete_marker { tr!("Retirer le marqueur") } else { tr!("Supprimer la version") };
                 if danger_button(ui, p, label).clicked() {
-                    self.working = Some("Suppression…".to_owned());
+                    self.working = Some(tr!("Suppression…").to_owned());
                     requests.push(Request::DeleteVersion(self.path.clone(), version.id.clone()));
                     self.confirm = None;
-                } else if ui.button("Annuler").clicked() {
+                } else if ui.button(tr!("Annuler")).clicked() {
                     self.confirm = None;
                 }
             });
@@ -173,10 +175,10 @@ impl Versions {
         ui.add_space(6.0);
         let mut close = false;
         buttons(ui, |ui| {
-            close = ui.button("Fermer").clicked();
+            close = ui.button(tr!("Fermer")).clicked();
             let ready = self.working.is_none() && !matches!(self.state, State::Loading);
             if ui
-                .add_enabled(ready, egui::Button::new(format!("{}  Actualiser", icon::ARROWS_CLOCKWISE)))
+                .add_enabled(ready, egui::Button::new(format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Actualiser"))))
                 .clicked()
             {
                 self.reload(requests);
@@ -202,7 +204,7 @@ impl Versions {
                 size: version.size.unwrap_or(0),
             }),
             Press::Restore => {
-                self.working = Some("Restauration…".to_owned());
+                self.working = Some(tr!("Restauration…").to_owned());
                 requests.push(Request::RestoreVersion(self.path.clone(), version.id));
             }
             Press::Delete => self.confirm = Some(version),
@@ -220,7 +222,7 @@ impl Versions {
         match (verb, picked) {
             ("confirm", _) => {
                 if let Some(version) = self.confirm.take() {
-                    self.working = Some("Suppression…".to_owned());
+                    self.working = Some(tr!("Suppression…").to_owned());
                     requests.push(Request::DeleteVersion(self.path.clone(), version.id));
                 }
             }
@@ -251,8 +253,8 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
         p,
         format!(
             "{} · {}",
-            format::count(count, "version", "versions"),
-            format::count(versions.len() - count, "marqueur de suppression", "marqueurs de suppression")
+            trn!(count, "{n} version", "{n} versions"),
+            trn!(versions.len() - count, "{n} marqueur de suppression", "{n} marqueurs de suppression")
         ),
     ));
     ui.add_space(4.0);
@@ -275,7 +277,8 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
             .column(Column::remainder().clip(true))
             .column(Column::exact(104.0))
             .header(24.0, |mut header| {
-                for (title, right) in [("Date", false), ("", false), ("Taille", true), ("Version", false), ("", false)] {
+                let titles = [(tr!("Date"), false), ("", false), (tr!("Taille"), true), (tr!("Version"), false), ("", false)];
+                for (title, right) in titles {
                     header.col(|ui| {
                         let text = RichText::new(title).size(12.0).color(p.muted);
                         if right {
@@ -296,7 +299,8 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
                     });
                     row.col(|ui| {
                         if version.latest {
-                            badge(ui, p, if version.delete_marker { "Supprimé" } else { "Actuelle" }, version.delete_marker);
+                            let text = if version.delete_marker { tr!("Supprimé") } else { tr!("Actuelle") };
+                            badge(ui, p, text, version.delete_marker);
                         }
                     });
                     row.col(|ui| {
@@ -308,12 +312,14 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
                     row.col(|ui| {
                         ui.add_space(10.0);
                         if version.delete_marker {
-                            ui.label(RichText::new(format!("{}  Marqueur de suppression", icon::TRASH)).color(p.muted));
+                            let text = format!("{}  {}", icon::TRASH, tr!("Marqueur de suppression"));
+                            ui.label(RichText::new(text).color(p.muted));
                         } else {
                             let id = RichText::new(&version.id).monospace().size(12.0).color(p.muted);
-                            let mut hover = format!("Identifiant : {}", version.id);
+                            let mut hover = tr!("Identifiant : {id}", id = version.id);
                             if let Some(class) = &version.storage_class {
-                                hover.push_str(&format!("\nClasse de stockage : {class}"));
+                                hover.push('\n');
+                                hover.push_str(&tr!("Classe de stockage : {class}", class));
                             }
                             ui.add(Label::new(id).truncate().sense(Sense::hover())).on_hover_text(hover);
                         }
@@ -323,9 +329,9 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let tooltip = if version.delete_marker {
-                                "Retirer ce marqueur de suppression"
+                                tr!("Retirer ce marqueur de suppression")
                             } else {
-                                "Supprimer définitivement cette version"
+                                tr!("Supprimer définitivement cette version")
                             };
                             if icon_button(ui, p, icon::TRASH, tooltip, true).clicked() {
                                 pressed = Some((Press::Delete, version.clone()));
@@ -338,16 +344,16 @@ fn table(ui: &mut Ui, p: &Palette, versions: &[Version]) -> Option<(Press, Versi
                                 p,
                                 icon::ARROW_COUNTER_CLOCKWISE,
                                 if version.latest {
-                                    "C'est déjà la version actuelle"
+                                    tr!("C'est déjà la version actuelle")
                                 } else {
-                                    "Restaurer : en faire la version actuelle (copie)"
+                                    tr!("Restaurer : en faire la version actuelle (copie)")
                                 },
                                 !version.latest,
                             );
                             if restore.clicked() {
                                 pressed = Some((Press::Restore, version.clone()));
                             }
-                            if icon_button(ui, p, icon::DOWNLOAD_SIMPLE, "Télécharger cette version", true).clicked() {
+                            if icon_button(ui, p, icon::DOWNLOAD_SIMPLE, tr!("Télécharger cette version"), true).clicked() {
                                 pressed = Some((Press::Download, version.clone()));
                             }
                         });
@@ -371,6 +377,6 @@ fn badge(ui: &mut Ui, p: &Palette, text: &str, danger: bool) {
 /// Versions are often minutes apart: the seconds tell them apart.
 fn precise_date(unix_seconds: i64) -> String {
     chrono::DateTime::from_timestamp(unix_seconds, 0)
-        .map(|utc| utc.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string())
+        .map(|utc| utc.with_timezone(&chrono::Local).format(format::date_seconds_pattern()).to_string())
         .unwrap_or_default()
 }

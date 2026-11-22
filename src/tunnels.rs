@@ -65,9 +65,9 @@ impl ForwardKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Local => "Locale",
-            Self::Remote => "Distante",
-            Self::Dynamic => "Dynamique",
+            Self::Local => tr!("Locale"),
+            Self::Remote => tr!("Distante"),
+            Self::Dynamic => tr!("Dynamique"),
         }
     }
 
@@ -161,7 +161,9 @@ impl ForwardRule {
     pub fn summary(&self) -> String {
         match self.kind {
             ForwardKind::Local => format!("{} → {}", self.listen(), self.destination()),
-            ForwardKind::Remote => format!("serveur {} → {}", self.listen(), self.destination()),
+            ForwardKind::Remote => {
+                tr!("serveur {listen} → {destination}", listen = self.listen(), destination = self.destination())
+            }
             ForwardKind::Dynamic => format!("SOCKS {}", self.listen()),
         }
     }
@@ -176,14 +178,14 @@ impl ForwardRule {
     /// What keeps the rule from running, if anything.
     pub fn problem(&self) -> Option<&'static str> {
         if self.bind_port == 0 && self.kind != ForwardKind::Remote {
-            return Some("Port d'écoute manquant");
+            return Some(tr!("Port d'écoute manquant"));
         }
         if self.kind != ForwardKind::Dynamic {
             if self.dest_host.trim().is_empty() {
-                return Some("Destination manquante");
+                return Some(tr!("Destination manquante"));
             }
             if self.dest_port == 0 {
-                return Some("Port de destination manquant");
+                return Some(tr!("Port de destination manquant"));
             }
         }
         None
@@ -607,7 +609,7 @@ async fn run_connection(
     let watcher = tokio::spawn(watch(connection.clone(), lost_sender));
     let ending = loop {
         tokio::select! {
-            error = lost.recv() => break Ending::Lost(error.unwrap_or_else(|| "connexion perdue".to_owned())),
+            error = lost.recv() => break Ending::Lost(error.unwrap_or_else(|| tr!("connexion perdue").to_owned())),
             command = commands.recv() => match command {
                 None | Some(Command::Shutdown) => break Ending::Shutdown,
                 Some(Command::Reconnect) => break Ending::Reconnect,
@@ -643,14 +645,14 @@ async fn watch(connection: Arc<Connection>, lost: mpsc::Sender<String>) {
     loop {
         tokio::time::sleep(CHECK_EVERY).await;
         if connection.handle.is_closed() {
-            let _ = lost.send("le serveur a fermé la connexion".to_owned()).await;
+            let _ = lost.send(tr!("le serveur a fermé la connexion").to_owned()).await;
             return;
         }
         checks += 1;
         if checks.is_multiple_of(PING_EVERY_CHECKS) {
             let answered = tokio::time::timeout(PING_TIMEOUT, connection.handle.send_ping()).await;
             if !matches!(answered, Ok(Ok(()))) {
-                let _ = lost.send("le serveur ne répond plus".to_owned()).await;
+                let _ = lost.send(tr!("le serveur ne répond plus").to_owned()).await;
                 return;
             }
         }
@@ -813,12 +815,12 @@ fn launch(
 pub async fn bind(host: &str, port: u16) -> Result<TcpListener, String> {
     let address = endpoint(host, port);
     TcpListener::bind((host, port)).await.map_err(|error| match error.kind() {
-        io::ErrorKind::AddrInUse => format!("Le port {address} est déjà utilisé sur cet ordinateur"),
+        io::ErrorKind::AddrInUse => tr!("Le port {address} est déjà utilisé sur cet ordinateur", address),
         io::ErrorKind::PermissionDenied => {
-            format!("Accès refusé au port {address} : il est réservé par le système ou un autre programme")
+            tr!("Accès refusé au port {address} : il est réservé par le système ou un autre programme", address)
         }
-        io::ErrorKind::AddrNotAvailable => format!("L'adresse {host} n'appartient pas à cet ordinateur"),
-        _ => format!("Écoute sur {address} impossible : {error}"),
+        io::ErrorKind::AddrNotAvailable => tr!("L'adresse {host} n'appartient pas à cet ordinateur", host),
+        _ => tr!("Écoute sur {address} impossible : {error}", address, error),
     })
 }
 
@@ -854,7 +856,7 @@ async fn listen(connection: Arc<Connection>, rule: ForwardRule, reporter: Report
                 }
                 // Out of sockets, most likely: give it a moment.
                 Err(error) => {
-                    reporter.refused(format!("Connexion entrante refusée : {error}"));
+                    reporter.refused(tr!("Connexion entrante refusée : {error}", error));
                     tokio::time::sleep(Duration::from_millis(200)).await;
                 }
             },
@@ -926,21 +928,21 @@ async fn carry_socks(connection: Arc<Connection>, mut socket: TcpStream, peer: S
 fn open_error(error: &russh::Error, target: &str) -> String {
     match error {
         russh::Error::ChannelOpenFailure(ChannelOpenFailure::AdministrativelyProhibited) => {
-            "Le serveur refuse les redirections de ports (AllowTcpForwarding est désactivé)".to_owned()
+            tr!("Le serveur refuse les redirections de ports (AllowTcpForwarding est désactivé)").to_owned()
         }
         russh::Error::ChannelOpenFailure(ChannelOpenFailure::ConnectFailed) => {
-            format!("{target} est injoignable depuis le serveur (connexion refusée, ou hôte introuvable)")
+            tr!("{target} est injoignable depuis le serveur (connexion refusée, ou hôte introuvable)", target)
         }
         russh::Error::ChannelOpenFailure(ChannelOpenFailure::UnknownChannelType) => {
-            "Ce serveur ne prend pas en charge les redirections de ports".to_owned()
+            tr!("Ce serveur ne prend pas en charge les redirections de ports").to_owned()
         }
         russh::Error::ChannelOpenFailure(ChannelOpenFailure::ResourceShortage) => {
-            format!("Le serveur manque de ressources pour joindre {target}")
+            tr!("Le serveur manque de ressources pour joindre {target}", target)
         }
         russh::Error::ChannelOpenFailure(ChannelOpenFailure::Other { reason, .. }) => {
-            format!("Le serveur a refusé de joindre {target} : {reason}")
+            tr!("Le serveur a refusé de joindre {target} : {reason}", target, reason)
         }
-        other => format!("{target} : redirection impossible ({other})"),
+        other => tr!("{target} : redirection impossible ({other})", target, other),
     }
 }
 
@@ -961,7 +963,7 @@ async fn remote(connection: Arc<Connection>, rule: ForwardRule, reporter: Report
     if port != asked {
         route = Some(routes::add(&connection.host, connection.port, &address, port, sender));
     }
-    reporter.state(RuleState::Active(format!("{} sur le serveur", endpoint(&address, port))));
+    reporter.state(RuleState::Active(tr!("{address} sur le serveur", address = endpoint(&address, port))));
 
     let target = (rule.dest_host.trim().to_owned(), rule.dest_port);
     let mut connections = JoinSet::new();
@@ -983,11 +985,12 @@ async fn remote(connection: Arc<Connection>, rule: ForwardRule, reporter: Report
 
 fn forward_error(error: &russh::Error, address: &str) -> String {
     match error {
-        russh::Error::RequestDenied => format!(
+        russh::Error::RequestDenied => tr!(
             "Le serveur a refusé d'ouvrir le port {address} : déjà utilisé là-bas, réservé, \
-             ou redirections distantes interdites (AllowTcpForwarding, GatewayPorts)"
+             ou redirections distantes interdites (AllowTcpForwarding, GatewayPorts)",
+            address
         ),
-        other => format!("Ouverture du port {address} sur le serveur impossible : {other}"),
+        other => tr!("Ouverture du port {address} sur le serveur impossible : {other}", address, other),
     }
 }
 
@@ -1001,13 +1004,13 @@ async fn carry_remote(forwarded: Forwarded, (host, port): (String, u16), reporte
             return reporter.carry(socket, forwarded.channel).await;
         }
         Ok(Err(error)) => match error.kind() {
-            io::ErrorKind::ConnectionRefused => format!("Rien n'écoute sur {target}, sur cet ordinateur"),
-            _ => format!("{target} est injoignable depuis cet ordinateur : {error}"),
+            io::ErrorKind::ConnectionRefused => tr!("Rien n'écoute sur {target}, sur cet ordinateur", target),
+            _ => tr!("{target} est injoignable depuis cet ordinateur : {error}", target, error),
         },
-        Err(_) => format!("{target} ne répond pas"),
+        Err(_) => tr!("{target} ne répond pas", target),
     };
     forwarded.reply.reject(ChannelOpenFailure::ConnectFailed).await;
-    reporter.refused(format!("{error} (connexion venue de {})", forwarded.originator));
+    reporter.refused(tr!("{error} (connexion venue de {origin})", error, origin = forwarded.originator));
 }
 
 /// A connection the server opened for a remote forward, to be carried to
@@ -1094,8 +1097,9 @@ mod routes {
 }
 
 /// Why the SSH connection could not be opened, in words: the usual network
-/// failures are said here, in French, rather than in the words of the
-/// system; anything else is the error and its causes on one line.
+/// failures are said here, in the language of the interface, rather than in
+/// the words of the system; anything else is the error and its causes on
+/// one line.
 fn describe(error: &anyhow::Error, settings: &SshSettings) -> String {
     let server = endpoint(&settings.host, settings.port);
     for cause in error.chain() {
@@ -1105,14 +1109,14 @@ fn describe(error: &anyhow::Error, settings: &SshSettings) -> String {
         };
         let said = match io.map(io::Error::kind) {
             Some(io::ErrorKind::ConnectionRefused) => {
-                format!("{server} refuse la connexion : aucun serveur SSH n'écoute sur ce port")
+                tr!("{server} refuse la connexion : aucun serveur SSH n'écoute sur ce port", server)
             }
-            Some(io::ErrorKind::TimedOut) => format!("{server} ne répond pas"),
+            Some(io::ErrorKind::TimedOut) => tr!("{target} ne répond pas", target = server),
             Some(io::ErrorKind::HostUnreachable | io::ErrorKind::NetworkUnreachable) => {
-                format!("{server} est injoignable depuis cet ordinateur (réseau)")
+                tr!("{server} est injoignable depuis cet ordinateur (réseau)", server)
             }
             Some(io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted) => {
-                format!("{server} a coupé la connexion")
+                tr!("{server} a coupé la connexion", server)
             }
             _ => continue,
         };

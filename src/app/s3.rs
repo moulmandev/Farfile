@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use super::App;
 use crate::dev;
-use crate::format;
 use crate::s3::{Access, DeletedListing, General, Op, Part, Reply, S3Error, S3Event, Target, Versioning};
 use crate::s3::{bucket_and_key, folder_prefix};
 use crate::storage::{RemotePath, Storage, storage_key};
@@ -148,7 +147,7 @@ impl App {
                 };
                 match result {
                     Ok(count) => restored += count,
-                    Err(error) => failures.push(format!("{} : {error}", name.trim_end_matches('/'))),
+                    Err(error) => failures.push(tr!("{name} : {error}", name = name.trim_end_matches('/'), error)),
                 }
             }
             emitter.emit(Event::Changed {
@@ -156,18 +155,18 @@ impl App {
                 path: folder,
             });
             let text = match (names.as_slice(), restored) {
-                ([only], 1) if !only.ends_with('/') => format!("« {only} » restauré"),
+                ([only], 1) if !only.ends_with('/') => tr!("« {name} » restauré", name = only),
                 (_, 0) if !failures.is_empty() => String::new(),
-                _ => format!("{} restauré(s)", format::count(restored, "fichier", "fichiers")),
+                _ => trn!(restored, "{n} fichier restauré(s)", "{n} fichiers restauré(s)"),
             };
             let notice = match failures.first() {
                 None => Event::Notice { text, error: false },
                 Some(first) if text.is_empty() => Event::Notice {
-                    text: format!("Restauration impossible : {first}"),
+                    text: tr!("Restauration impossible : {error}", error = first),
                     error: true,
                 },
                 Some(first) => Event::Notice {
-                    text: format!("{text}, mais pas tout : {first}"),
+                    text: tr!("{done}, mais pas tout : {error}", done = text, error = first),
                     error: true,
                 },
             };
@@ -188,7 +187,7 @@ impl App {
                 }
                 // The dialog was closed meanwhile: failures still get told.
                 if let Reply::Done { op, result: Err(error) } = event.reply {
-                    self.toast(now, format!("{} : {error}", op_label(op)), true);
+                    self.toast(now, tr!("{name} : {error}", name = op_label(op), error), true);
                 }
             }
             Target::Tab(id) => {
@@ -254,7 +253,8 @@ impl App {
                 {
                     changed(&emitter, &storage, folder);
                 }
-                done(Op::RestoreVersion, result.map(|()| "Cette version est maintenant la version actuelle.".to_owned()))
+                let text = tr!("Cette version est maintenant la version actuelle.");
+                done(Op::RestoreVersion, result.map(|()| text.to_owned()))
             }),
             Request::DeleteVersion(path, version) => self.run_s3(storage, target, move |storage, emitter| async move {
                 let s3 = storage.s3()?;
@@ -265,7 +265,7 @@ impl App {
                 {
                     changed(&emitter, &storage, folder);
                 }
-                done(Op::DeleteVersion, result.map(|()| "Version supprimée.".to_owned()))
+                done(Op::DeleteVersion, result.map(|()| tr!("Version supprimée.").to_owned()))
             }),
             Request::CreateBucket { name, region } => self.run_s3(storage, target, move |storage, emitter| async move {
                 let s3 = storage.s3()?;
@@ -273,7 +273,7 @@ impl App {
                 if result.is_ok() {
                     changed(&emitter, &storage, RemotePath::default());
                     emitter.emit(Event::Notice {
-                        text: format!("Bucket « {name} » créé"),
+                        text: tr!("Bucket « {name} » créé", name),
                         error: false,
                     });
                 }
@@ -302,12 +302,14 @@ impl App {
                     if result.is_ok() {
                         changed(&emitter, &storage, RemotePath::default());
                         let text = if removed > 0 {
-                            format!(
-                                "Bucket « {bucket} » vidé ({} ou versions) et supprimé",
-                                format::count(removed as usize, "objet", "objets")
+                            trn!(
+                                removed,
+                                "Bucket « {bucket} » vidé ({n} objet ou versions) et supprimé",
+                                "Bucket « {bucket} » vidé ({n} objets ou versions) et supprimé",
+                                bucket
                             )
                         } else {
-                            format!("Bucket « {bucket} » supprimé")
+                            tr!("Bucket « {bucket} » supprimé", bucket)
                         };
                         emitter.emit(Event::Notice { text, error: false });
                     }
@@ -352,15 +354,15 @@ impl App {
             Request::SaveVersioning(bucket, enabled) => self.run_s3(storage, target, move |storage, _| async move {
                 let s3 = storage.s3()?;
                 let result = s3.bucket(&bucket).await.set_versioning(enabled).await;
-                let text = if enabled { "Gestion des versions activée." } else { "Gestion des versions suspendue." };
+                let text = if enabled { tr!("Gestion des versions activée.") } else { tr!("Gestion des versions suspendue.") };
                 done(Op::SaveVersioning, result.map(|()| text.to_owned()))
             }),
             Request::SaveLifecycle(bucket, doc) => self.run_s3(storage, target, move |storage, _| async move {
                 let s3 = storage.s3()?;
                 let result = s3.bucket(&bucket).await.set_lifecycle(&doc).await;
                 let text = match doc.rules.len() {
-                    0 => "Règles de cycle de vie retirées.".to_owned(),
-                    count => format!("{} enregistrée(s).", format::count(count, "règle", "règles")),
+                    0 => tr!("Règles de cycle de vie retirées.").to_owned(),
+                    count => trn!(count, "{n} règle enregistrée(s).", "{n} règles enregistrée(s)."),
                 };
                 done(Op::SaveLifecycle, result.map(|()| text))
             }),
@@ -368,21 +370,22 @@ impl App {
                 let s3 = storage.s3()?;
                 let result = s3.bucket(&bucket).await.set_cors(&doc).await;
                 let text = match doc.rules.len() {
-                    0 => "Règles CORS retirées.".to_owned(),
-                    count => format!("{} CORS enregistrée(s).", format::count(count, "règle", "règles")),
+                    0 => tr!("Règles CORS retirées.").to_owned(),
+                    count => trn!(count, "{n} règle CORS enregistrée(s).", "{n} règles CORS enregistrée(s)."),
                 };
                 done(Op::SaveCors, result.map(|()| text))
             }),
             Request::SavePolicy(bucket, policy) => self.run_s3(storage, target, move |storage, _| async move {
                 let s3 = storage.s3()?;
                 let result = s3.bucket(&bucket).await.set_policy(policy.as_deref()).await;
-                let text = if policy.is_some() { "Politique enregistrée." } else { "Politique retirée." };
+                let text = if policy.is_some() { tr!("Politique enregistrée.") } else { tr!("Politique retirée.") };
                 done(Op::SavePolicy, result.map(|()| text.to_owned()))
             }),
             Request::SavePublicAccess(bucket, access) => self.run_s3(storage, target, move |storage, _| async move {
                 let s3 = storage.s3()?;
                 let result = s3.bucket(&bucket).await.set_public_access(access).await;
-                done(Op::SavePublicAccess, result.map(|()| "Blocage de l'accès public enregistré.".to_owned()))
+                let text = tr!("Blocage de l'accès public enregistré.");
+                done(Op::SavePublicAccess, result.map(|()| text.to_owned()))
             }),
             Request::Presign { path, serial, expires, attachment } => {
                 self.run_s3(storage, target, move |storage, _| async move {
@@ -406,12 +409,12 @@ impl App {
                 let mut result = s3.set_object_public(&bucket, &key, public).await;
                 // Some servers (RustFS) accept the ACL and ignore it.
                 if result.is_ok() && s3.object_is_public(&bucket, &key).await.is_ok_and(|now| now != public) {
-                    result = Err(S3Error::local(
-                        "Le serveur a accepté la demande, mais l'ACL relue n'a pas changé : il ne tient pas compte \
-                         des ACL d'objet. Passez par la politique du bucket.",
-                    ));
+                    result = Err(S3Error::local(tr!(
+                        "Le serveur a accepté la demande, mais l'ACL relue n'a pas changé : il ne tient pas \
+                         compte des ACL d'objet. Passez par la politique du bucket."
+                    )));
                 }
-                let text = if public { "Le fichier est maintenant public." } else { "Le fichier est maintenant privé." };
+                let text = if public { tr!("Le fichier est maintenant public.") } else { tr!("Le fichier est maintenant privé.") };
                 done(Op::SetPublic, result.map(|()| text.to_owned()))
             }),
             Request::LoadMeta(path) => self.run_s3(storage, target, move |storage, _| async move {
@@ -428,7 +431,7 @@ impl App {
                         changed(&emitter, &storage, folder);
                     }
                     emitter.emit(Event::Notice {
-                        text: format!("Métadonnées de « {} » enregistrées", path.name()),
+                        text: tr!("Métadonnées de « {name} » enregistrées", name = path.name()),
                         error: false,
                     });
                 }
@@ -458,7 +461,7 @@ impl App {
                     directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(PathBuf::from))
                 });
                 let mut dialog = rfd::FileDialog::new()
-                    .set_title("Enregistrer cette version sous…")
+                    .set_title(tr!("Enregistrer cette version sous…"))
                     .set_file_name(&suggested);
                 if let Some(start) = start {
                     dialog = dialog.set_directory(start);
@@ -486,7 +489,7 @@ impl App {
             size,
             move |transfer| async move {
                 let Some(s3) = storage.s3() else {
-                    anyhow::bail!("connexion S3 attendue");
+                    anyhow::bail!(tr!("connexion S3 attendue"));
                 };
                 s3.download_version(&bucket, &key, &version, &dest, &transfer.progress).await
             },
@@ -540,8 +543,8 @@ impl App {
 fn version_file_name(name: &str, modified: Option<i64>) -> String {
     let label = modified
         .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
-        .map(|at| format!("version du {}", at.with_timezone(&chrono::Local).format("%Y-%m-%d %H.%M.%S")))
-        .unwrap_or_else(|| "ancienne version".to_owned());
+        .map(|at| tr!("version du {date}", date = at.with_timezone(&chrono::Local).format("%Y-%m-%d %H.%M.%S")))
+        .unwrap_or_else(|| tr!("ancienne version").to_owned());
     let name = safe_component(name);
     match name.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() => format!("{stem} ({label}).{extension}"),

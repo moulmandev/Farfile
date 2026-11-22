@@ -61,7 +61,7 @@ use crate::storage::{Found, RemotePath, Storage};
 use crate::worker::{Fetcher, Item, Transfer, TransferState, safe_component};
 
 /// What the transfers say about where these downloads go.
-const TARGET: &str = "Glissé vers un autre programme";
+const TARGET: &str = tr_key!("Glissé vers un autre programme");
 /// The shell reads one file after the other: the next ones are fetched
 /// meanwhile, this many at most.
 const AHEAD: usize = 6;
@@ -114,7 +114,7 @@ pub fn drop_into(folder: &Path, fetcher: Fetcher, storage: Arc<dyn Storage>, ite
         let mut effect = DROPEFFECT_COPY;
         target.DragEnter(&data, MK_LBUTTON, point, &mut effect)?;
         if effect.0 & DROPEFFECT_COPY.0 == 0 {
-            anyhow::bail!("{} refuse ces fichiers", folder.display());
+            anyhow::bail!(tr!("{folder} refuse ces fichiers", folder = folder.display()));
         }
         effect = DROPEFFECT_COPY;
         target.Drop(&data, MODIFIERKEYS_FLAGS(0), point, &mut effect)?;
@@ -237,7 +237,7 @@ async fn explore(storage: &Arc<dyn Storage>, items: &[Item]) -> Result<Tree, Str
                 true
             })
             .await
-            .map_err(|error| format!("Impossible de lister {} : {error:#}", item.path))?;
+            .map_err(|error| tr!("Impossible de lister {path} : {error}", path = item.path, error = format!("{error:#}")))?;
         for find in found.into_inner().unwrap() {
             match find {
                 Found::File { relative, size } => {
@@ -290,7 +290,7 @@ impl Shared {
             let tree = AssertUnwindSafe(explore(&exploring.storage, &items))
                 .catch_unwind()
                 .await
-                .unwrap_or_else(|_| Err("la recherche des fichiers a échoué".to_owned()));
+                .unwrap_or_else(|_| Err(tr!("la recherche des fichiers a échoué").to_owned()));
             *exploring.tree.lock().unwrap() = Some(tree.map(Arc::new));
             exploring.explored.notify_all();
         });
@@ -312,13 +312,13 @@ impl Shared {
                 Ok(tree) if tree.too_long + tree.unreadable > 0 => {
                     let mut left_out = Vec::new();
                     if tree.too_long > 0 {
-                        left_out.push(format!("{} au nom trop long", tree.too_long));
+                        left_out.push(trn!(tree.too_long, "{n} au nom trop long", "{n} au nom trop long"));
                     }
                     if tree.unreadable > 0 {
-                        left_out.push(format!("{} dossier(s) illisible(s)", tree.unreadable));
+                        left_out.push(trn!(tree.unreadable, "{n} dossier(s) illisible(s)", "{n} dossier(s) illisible(s)"));
                     }
                     self.fetcher
-                        .notice(format!("Laissés de côté : {}", left_out.join(", ")), true);
+                        .notice(tr!("Laissés de côté : {list}", list = left_out.join(", ")), true);
                 }
                 Ok(_) => {}
             }
@@ -337,7 +337,7 @@ impl Shared {
             remote,
             self.local(index),
             node.size,
-            TARGET.to_owned(),
+            crate::i18n::lookup(TARGET).to_owned(),
         ))
     }
 

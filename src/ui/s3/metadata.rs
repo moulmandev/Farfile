@@ -28,23 +28,38 @@ const CONTENT_TYPES: [&str; 12] = [
 ];
 
 const CACHE_CONTROLS: [(&str, &str); 4] = [
-    ("no-cache", "Toujours revalider"),
-    ("no-store", "Ne jamais garder en cache"),
-    ("public, max-age=3600", "Une heure"),
-    ("public, max-age=31536000, immutable", "Un an, sans revalider"),
+    ("no-cache", tr_key!("Toujours revalider")),
+    ("no-store", tr_key!("Ne jamais garder en cache")),
+    ("public, max-age=3600", tr_key!("Une heure")),
+    ("public, max-age=31536000, immutable", tr_key!("Un an, sans revalider")),
 ];
 
 /// The classes of Amazon S3; other providers accept some of them.
-const STORAGE_CLASSES: [(&str, &str); 8] = [
-    ("STANDARD", "Standard"),
-    ("INTELLIGENT_TIERING", "Hiérarchisation intelligente"),
-    ("STANDARD_IA", "Accès peu fréquent"),
-    ("ONEZONE_IA", "Accès peu fréquent, une zone"),
-    ("GLACIER_IR", "Glacier, récupération instantanée"),
-    ("GLACIER", "Glacier, récupération flexible"),
-    ("DEEP_ARCHIVE", "Glacier Deep Archive"),
-    ("REDUCED_REDUNDANCY", "Redondance réduite (ancienne)"),
+const STORAGE_CLASSES: [&str; 8] = [
+    "STANDARD",
+    "INTELLIGENT_TIERING",
+    "STANDARD_IA",
+    "ONEZONE_IA",
+    "GLACIER_IR",
+    "GLACIER",
+    "DEEP_ARCHIVE",
+    "REDUCED_REDUNDANCY",
 ];
+
+/// The readable name of a storage class of [`STORAGE_CLASSES`].
+fn class_label(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "STANDARD" => "Standard",
+        "INTELLIGENT_TIERING" => tr!("Hiérarchisation intelligente"),
+        "STANDARD_IA" => tr!("Accès peu fréquent"),
+        "ONEZONE_IA" => tr!("Accès peu fréquent, une zone"),
+        "GLACIER_IR" => tr!("Glacier, récupération instantanée"),
+        "GLACIER" => tr!("Glacier, récupération flexible"),
+        "DEEP_ARCHIVE" => "Glacier Deep Archive",
+        "REDUCED_REDUNDANCY" => tr!("Redondance réduite (ancienne)"),
+        _ => return None,
+    })
+}
 
 enum State {
     Loading,
@@ -87,10 +102,10 @@ impl Metadata {
                     Err(error) => {
                         self.error = Some(match error.code.as_str() {
                             "InvalidStorageClass" => {
-                                "Le serveur ne propose pas cette classe de stockage.".to_owned()
+                                tr!("Le serveur ne propose pas cette classe de stockage.").to_owned()
                             }
                             "InvalidObjectState" => {
-                                "L'objet est archivé : restaurez-le avant de le modifier.".to_owned()
+                                tr!("L'objet est archivé : restaurez-le avant de le modifier.").to_owned()
                             }
                             _ => failure(&error),
                         })
@@ -116,8 +131,9 @@ impl Metadata {
             *value = value.trim().to_owned();
         }
         if let Some((key, _)) = meta.user.iter().find(|(key, _)| !header_safe(key)) {
-            self.error = Some(format!(
-                "« {key} » ne peut pas servir de nom : lettres sans accent, chiffres et tirets seulement."
+            self.error = Some(tr!(
+                "« {key} » ne peut pas servir de nom : lettres sans accent, chiffres et tirets seulement.",
+                key
             ));
             return;
         }
@@ -154,7 +170,7 @@ impl Metadata {
     /// Returns true to close.
     pub fn show(&mut self, ui: &mut Ui, p: &Palette, requests: &mut Vec<Request>) -> bool {
         ui.set_width(WIDTH);
-        heading(ui, p, &format!("Métadonnées de « {} »", self.path.name()));
+        heading(ui, p, &tr!("Métadonnées de « {name} »", name = self.path.name()));
         subject(ui, p, icon::FILE, &self.path.to_string());
         ui.add_space(DIALOG_GAP);
 
@@ -164,14 +180,14 @@ impl Metadata {
                 ui.add_space(60.0);
                 ui.vertical_centered(|ui| ui.add(egui::Spinner::new().size(24.0).color(p.accent)));
                 ui.add_space(60.0);
-                buttons(ui, |ui| close = ui.button("Annuler").clicked());
+                buttons(ui, |ui| close = ui.button(tr!("Annuler")).clicked());
                 return close;
             }
             State::Failed(error) => {
-                placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, "Impossible de lire les métadonnées", "");
+                placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, tr!("Impossible de lire les métadonnées"), "");
                 ui.vertical_centered(|ui| ui.add(Label::new(muted(p, failure(error))).wrap()));
                 ui.add_space(DIALOG_GAP);
-                buttons(ui, |ui| close = ui.button("Fermer").clicked());
+                buttons(ui, |ui| close = ui.button(tr!("Fermer")).clicked());
                 return close;
             }
             State::Ready { meta, saved } => (meta, saved),
@@ -179,7 +195,7 @@ impl Metadata {
 
         let mut facts = vec![format::size(meta.size)];
         if let Some(modified) = meta.modified {
-            facts.push(format!("modifié le {}", format::date(modified)));
+            facts.push(tr!("modifié le {date}", date = format::date(modified)));
         }
         if !meta.etag.is_empty() {
             facts.push(format!("ETag {}", meta.etag));
@@ -187,7 +203,7 @@ impl Metadata {
         ui.add(Label::new(small(p, facts.join(" · "))).truncate());
         ui.add_space(10.0);
 
-        section(ui, p, "En-têtes");
+        section(ui, p, tr!("En-têtes"));
         ui.add_space(2.0);
         egui::Grid::new("s3-meta")
             .num_columns(2)
@@ -195,7 +211,7 @@ impl Metadata {
             .min_col_width(LABEL_WIDTH)
             .show(ui, |ui| {
                 let width = WIDTH - LABEL_WIDTH - 12.0 - 34.0;
-                ui.label(muted(p, "Type de contenu"));
+                ui.label(muted(p, tr!("Type de contenu")));
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     ui.add(
@@ -204,7 +220,7 @@ impl Metadata {
                             .desired_width(width)
                             .margin(egui::Margin::symmetric(10, 6)),
                     );
-                    let pick = icon_button(ui, p, icon::CARET_DOWN, "Types courants", true);
+                    let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Types courants"), true);
                     egui::Popup::menu(&pick).show(|ui| {
                         for kind in CONTENT_TYPES {
                             if ui.button(kind).clicked() {
@@ -221,14 +237,14 @@ impl Metadata {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     ui.add(
                         TextEdit::singleline(&mut meta.cache_control)
-                            .hint_text("aucun — le navigateur décide")
+                            .hint_text(tr!("aucun — le navigateur décide"))
                             .desired_width(width)
                             .margin(egui::Margin::symmetric(10, 6)),
                     );
-                    let pick = icon_button(ui, p, icon::CARET_DOWN, "Réglages courants", true);
+                    let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Réglages courants"), true);
                     egui::Popup::menu(&pick).show(|ui| {
                         for (value, label) in CACHE_CONTROLS {
-                            if ui.button(format!("{label}   ·   {value}")).clicked() {
+                            if ui.button(format!("{}   ·   {value}", crate::i18n::lookup(label))).clicked() {
                                 meta.cache_control = value.to_owned();
                                 ui.close();
                             }
@@ -239,27 +255,25 @@ impl Metadata {
 
                 let full = width + 32.0;
                 for (label, value, hint) in [
-                    ("Content-Disposition", &mut meta.content_disposition, "aucun — ex. attachment"),
-                    ("Content-Encoding", &mut meta.content_encoding, "aucun — ex. gzip"),
-                    ("Content-Language", &mut meta.content_language, "aucun — ex. fr-FR"),
+                    ("Content-Disposition", &mut meta.content_disposition, tr!("aucun — ex. attachment")),
+                    ("Content-Encoding", &mut meta.content_encoding, tr!("aucun — ex. gzip")),
+                    ("Content-Language", &mut meta.content_language, tr!("aucun — ex. fr-FR")),
                 ] {
                     ui.label(muted(p, label));
                     ui.add(TextEdit::singleline(value).hint_text(hint).desired_width(full).margin(egui::Margin::symmetric(10, 6)));
                     ui.end_row();
                 }
 
-                ui.label(muted(p, "Classe de stockage"));
+                ui.label(muted(p, tr!("Classe de stockage")));
                 let current = if meta.storage_class.is_empty() { "STANDARD".to_owned() } else { meta.storage_class.clone() };
-                let shown = STORAGE_CLASSES
-                    .iter()
-                    .find(|(code, _)| *code == current)
-                    .map_or(current.clone(), |(code, label)| format!("{label}  ·  {code}"));
+                let shown = class_label(&current).map_or(current.clone(), |label| format!("{label}  ·  {current}"));
                 egui::ComboBox::from_id_salt("s3-storage-class")
                     .selected_text(shown)
                     .width(full)
                     .show_ui(ui, |ui| {
-                        for (code, label) in STORAGE_CLASSES {
+                        for code in STORAGE_CLASSES {
                             let selected = current == code;
+                            let label = class_label(code).unwrap_or(code);
                             if ui.selectable_label(selected, format!("{label}  ·  {code}")).clicked() {
                                 meta.storage_class = code.to_owned();
                             }
@@ -274,25 +288,32 @@ impl Metadata {
                 p,
                 icon::WARNING,
                 p.folder,
-                "Dans cette classe, le fichier n'est plus lisible directement : il faut d'abord demander sa \
-                 restauration, qui prend des heures.",
+                tr!(
+                    "Dans cette classe, le fichier n'est plus lisible directement : il faut d'abord demander sa \
+                     restauration, qui prend des heures."
+                ),
             );
         }
 
         ui.add_space(12.0);
-        section(ui, p, "Métadonnées personnalisées (x-amz-meta-*)");
+        section(ui, p, tr!("Métadonnées personnalisées (x-amz-meta-*)"));
         ui.add_space(2.0);
         let mut remove = None;
         for (index, (key, value)) in meta.user.iter_mut().enumerate() {
             ui.horizontal(|ui| {
-                ui.add(TextEdit::singleline(key).hint_text("nom").desired_width(LABEL_WIDTH).margin(egui::Margin::symmetric(10, 6)));
+                ui.add(
+                    TextEdit::singleline(key)
+                        .hint_text(tr!("nom"))
+                        .desired_width(LABEL_WIDTH)
+                        .margin(egui::Margin::symmetric(10, 6)),
+                );
                 ui.add(
                     TextEdit::singleline(value)
-                        .hint_text("valeur")
+                        .hint_text(tr!("valeur"))
                         .desired_width(WIDTH - LABEL_WIDTH - 52.0)
                         .margin(egui::Margin::symmetric(10, 6)),
                 );
-                if icon_button(ui, p, icon::X, "Retirer", true).clicked() {
+                if icon_button(ui, p, icon::X, tr!("Retirer"), true).clicked() {
                     remove = Some(index);
                 }
             });
@@ -301,9 +322,9 @@ impl Metadata {
             meta.user.remove(index);
         }
         if meta.user.is_empty() {
-            ui.label(small(p, "Aucune."));
+            ui.label(small(p, tr!("Aucune.")));
         }
-        if ui.small_button(format!("{}  Ajouter", icon::PLUS)).clicked() {
+        if ui.small_button(format!("{}  {}", icon::PLUS, tr!("Ajouter"))).clicked() {
             meta.user.push((String::new(), String::new()));
         }
 
@@ -311,8 +332,10 @@ impl Metadata {
         ui.add(
             Label::new(small(
                 p,
-                "L'objet est réécrit sur place par une copie : une nouvelle version apparaît si le bucket les \
-                 conserve, et son ACL redevient celle par défaut.",
+                tr!(
+                    "L'objet est réécrit sur place par une copie : une nouvelle version apparaît si le bucket \
+                     les conserve, et son ACL redevient celle par défaut."
+                ),
             ))
             .wrap(),
         );
@@ -324,9 +347,9 @@ impl Metadata {
         let changed = meta != saved;
         let mut save = false;
         buttons(ui, |ui| {
-            let label = if self.saving { "Enregistrement…" } else { "Enregistrer" };
+            let label = if self.saving { tr!("Enregistrement…") } else { tr!("Enregistrer") };
             save = primary_button(ui, p, label, changed && !self.saving).clicked();
-            close = ui.button("Annuler").clicked();
+            close = ui.button(tr!("Annuler")).clicked();
         });
         if save {
             self.save(requests);

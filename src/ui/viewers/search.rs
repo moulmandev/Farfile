@@ -58,7 +58,7 @@ fn form(
         ui.spacing_mut().item_spacing.x = 6.0;
         let field = ui.add(
             TextEdit::singleline(&mut search.pattern)
-                .hint_text(format!("{}  Nom, ou motif comme *.log", icon::MAGNIFYING_GLASS))
+                .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Nom, ou motif comme *.log")))
                 .margin(Margin::symmetric(10, 6))
                 .desired_width(250.0),
         );
@@ -67,7 +67,7 @@ fn form(
         }
         go |= field.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter));
 
-        for (kinds, label) in [(Kinds::All, "Tout"), (Kinds::Files, "Fichiers"), (Kinds::Folders, "Dossiers")] {
+        for (kinds, label) in [(Kinds::All, tr!("Tout")), (Kinds::Files, tr!("Fichiers")), (Kinds::Folders, tr!("Dossiers"))] {
             if ui.add(Button::selectable(search.kinds == kinds, label)).clicked() {
                 search.kinds = kinds;
             }
@@ -77,52 +77,39 @@ fn form(
             .filter(|field| !field.trim().is_empty())
             .count();
         let label = match set {
-            0 => format!("{}  Filtres", icon::FUNNEL),
-            _ => format!("{}  Filtres ({set})", icon::FUNNEL),
+            0 => format!("{}  {}", icon::FUNNEL, tr!("Filtres")),
+            _ => format!("{}  {}", icon::FUNNEL, tr!("Filtres ({set})", set)),
         };
-        let filters = ui.button(label).on_hover_text("Taille et date de modification");
+        let filters = ui.button(label).on_hover_text(tr!("Taille et date de modification"));
         Popup::menu(&filters)
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| go |= filters_menu(ui, p, search));
 
         if search.running() {
-            if ui.button(format!("{}  Arrêter", icon::STOP)).clicked() {
+            if ui.button(format!("{}  {}", icon::STOP, tr!("Arrêter"))).clicked() {
                 search.stop(now);
             }
         } else {
-            go |= primary_button(ui, p, &format!("{}  Rechercher", icon::BINOCULARS), true).clicked();
+            go |= primary_button(ui, p, &format!("{}  {}", icon::BINOCULARS, tr!("Rechercher")), true).clicked();
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let elsewhere = session.path != search.root && !search.running();
             if elsewhere
                 && ui
-                    .small_button("Dossier affiché")
-                    .on_hover_text(format!("Rechercher plutôt dans {}", session.path))
+                    .small_button(tr!("Dossier affiché"))
+                    .on_hover_text(tr!("Rechercher plutôt dans {path}", path = session.path))
                     .clicked()
             {
                 search.root = session.path.clone();
             }
-            let scope = format!("dans {} et ses sous-dossiers", place(session, &search.root));
+            let scope = tr!("dans {place} et ses sous-dossiers", place = place(session, &search.root));
             ui.add(Label::new(small(p, scope)).truncate());
         });
     });
     if go && !search.running() {
         search.start(spawner, session.storage.clone(), parallel_listings(protocol), now);
     }
-}
-
-/// `10000` → `10 000`.
-fn thousands(number: usize) -> String {
-    let digits = number.to_string();
-    let mut out = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            out.push(' ');
-        }
-        out.push(digit);
-    }
-    out
 }
 
 /// How a folder of the connection is named for the user.
@@ -144,19 +131,19 @@ fn filters_menu(ui: &mut Ui, p: &Palette, search: &mut Search) -> bool {
         go |= response.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter));
     };
     egui::Grid::new("search-filters").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-        ui.label("Taille minimale");
-        field(ui, &mut search.min_size, "ex. 10 Mo");
+        ui.label(tr!("Taille minimale"));
+        field(ui, &mut search.min_size, tr!("ex. 10 Mo"));
         ui.end_row();
-        ui.label("Taille maximale");
-        field(ui, &mut search.max_size, "ex. 2 Go");
+        ui.label(tr!("Taille maximale"));
+        field(ui, &mut search.max_size, tr!("ex. 2 Go"));
         ui.end_row();
-        ui.label("Modifié depuis le");
-        field(ui, &mut search.after, "JJ/MM/AAAA");
+        ui.label(tr!("Modifié depuis le"));
+        field(ui, &mut search.after, tr!("JJ/MM/AAAA"));
         ui.end_row();
     });
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        for (label, days) in [("Aujourd'hui", 0), ("7 jours", 7), ("30 jours", 30), ("1 an", 365)] {
+        for (label, days) in [(tr!("Aujourd'hui"), 0), (tr!("7 jours"), 7), (tr!("30 jours"), 30), (tr!("1 an"), 365)] {
             if ui.small_button(label).clicked() {
                 search.after = days_ago(days);
             }
@@ -165,10 +152,10 @@ fn filters_menu(ui: &mut Ui, p: &Palette, search: &mut Search) -> bool {
     if let Err(error) = search.criteria() {
         ui.add(Label::new(RichText::new(error).size(12.0).color(p.danger)).wrap());
     } else {
-        ui.label(small(p, "Les tailles ne concernent que les fichiers."));
+        ui.label(small(p, tr!("Les tailles ne concernent que les fichiers.")));
     }
     ui.separator();
-    if ui.button("Effacer les filtres").clicked() {
+    if ui.button(tr!("Effacer les filtres")).clicked() {
         search.min_size.clear();
         search.max_size.clear();
         search.after.clear();
@@ -184,37 +171,37 @@ fn progress(ui: &mut Ui, p: &Palette, search: &Search) {
             return;
         }
         let Some(run) = &search.run else {
-            ui.label(small(p, "Plusieurs motifs se séparent par « ; », par exemple *.png; *.jpg"));
+            ui.label(small(p, tr!("Plusieurs motifs se séparent par « ; », par exemple *.png; *.jpg")));
             return;
         };
         if search.running() {
             ui.add(egui::Spinner::new().size(13.0).color(p.accent));
         }
         let mut text = format!(
-            "{} · {} parcourus",
-            format::count(search.hits.len(), "résultat", "résultats"),
-            format::count(run.folders, "dossier", "dossiers"),
+            "{} · {}",
+            trn!(search.hits.len(), "{n} résultat", "{n} résultats"),
+            trn!(run.folders, "{n} dossier parcourus", "{n} dossiers parcourus"),
         );
         match run.finished {
             Some(end) => text.push_str(&format!(" · {}", format::duration(end - run.started))),
-            None => text.push_str(" · recherche en cours…"),
+            None => text.push_str(&format!(" · {}", tr!("recherche en cours…"))),
         }
         ui.label(small(p, text));
         if run.truncated {
-            let text = format!("Arrêtée à {} résultats : précisez la recherche", thousands(MAX_HITS));
+            let text = tr!("Arrêtée à {count} résultats : précisez la recherche", count = crate::editor::thousands(MAX_HITS));
             ui.label(RichText::new(text).size(12.0).color(p.danger));
         }
         if !run.unreadable.is_empty() {
             let text = format!(
                 "{}  {}",
                 icon::WARNING,
-                format::count(run.unreadable.len(), "dossier illisible", "dossiers illisibles")
+                trn!(run.unreadable.len(), "{n} dossier illisible", "{n} dossiers illisibles")
             );
             let details: Vec<String> = run
                 .unreadable
                 .iter()
                 .take(12)
-                .map(|(folder, error)| format!("{folder} : {error}"))
+                .map(|(folder, error)| tr!("{name} : {error}", name = folder, error))
                 .collect();
             ui.label(RichText::new(text).size(12.0).color(p.danger))
                 .on_hover_text(details.join("\n"));
@@ -229,13 +216,13 @@ fn results(ui: &mut Ui, p: &Palette, search: &mut Search, focused: &mut bool, ac
             p,
             icon::BINOCULARS,
             p.faint,
-            "Rechercher dans les sous-dossiers",
-            "Un nom, ou un motif comme *.log ou rapport-202?.pdf, puis Entrée.",
+            tr!("Rechercher dans les sous-dossiers"),
+            tr!("Un nom, ou un motif comme *.log ou rapport-202?.pdf, puis Entrée."),
         );
         return;
     };
     if let Some(error) = &run.failed {
-        placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, "Recherche impossible", "");
+        placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, tr!("Recherche impossible"), "");
         ui.vertical_centered(|ui| ui.add(Label::new(muted(p, error)).wrap()));
         return;
     }
@@ -245,11 +232,11 @@ fn results(ui: &mut Ui, p: &Palette, search: &mut Search, focused: &mut bool, ac
                 ui.add_space((ui.available_height() * 0.3).max(12.0));
                 ui.add(egui::Spinner::new().size(22.0).color(p.accent));
                 ui.add_space(6.0);
-                ui.label(muted(p, "Recherche…"));
+                ui.label(muted(p, tr!("Recherche…")));
             });
         } else {
-            let hint = format!("Rien ne correspond dans {} ni ses sous-dossiers.", run.root);
-            placeholder(ui, p, icon::MAGNIFYING_GLASS, p.faint, "Aucun résultat", &hint);
+            let hint = tr!("Rien ne correspond dans {folder} ni ses sous-dossiers.", folder = run.root);
+            placeholder(ui, p, icon::MAGNIFYING_GLASS, p.faint, tr!("Aucun résultat"), &hint);
         }
         return;
     }
@@ -298,18 +285,18 @@ fn table(ui: &mut Ui, p: &Palette, search: &mut Search, focused: &mut bool, acti
         .header(24.0, |mut row| {
             row.col(|ui| {
                 ui.add_space(8.0);
-                header(ui, "Nom", Sort::Name, &mut sort_by);
+                header(ui, tr!("Nom"), Sort::Name, &mut sort_by);
             });
-            row.col(|ui| header(ui, "Dossier", Sort::Folder, &mut sort_by));
+            row.col(|ui| header(ui, tr!("Dossier"), Sort::Folder, &mut sort_by));
             row.col(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    header(ui, "Taille", Sort::Size, &mut sort_by);
+                    header(ui, tr!("Taille"), Sort::Size, &mut sort_by);
                 });
             });
             if dated {
                 row.col(|ui| {
                     ui.add_space(18.0);
-                    header(ui, "Modifié", Sort::Modified, &mut sort_by);
+                    header(ui, tr!("Modifié"), Sort::Modified, &mut sort_by);
                 });
             }
         })
@@ -377,28 +364,28 @@ fn hit_menu(ui: &mut Ui, hit: &Hit, index: usize, root: &RemotePath, actions: &m
     };
     let viewer = Action::Viewers;
     if hit.entry.is_dir() {
-        item(ui, format!("{}  Ouvrir le dossier", icon::FOLDER_OPEN), "", Action::Navigate(path.clone()));
+        item(ui, format!("{}  {}", icon::FOLDER_OPEN, tr!("Ouvrir le dossier")), "", Action::Navigate(path.clone()));
     } else {
-        item(ui, format!("{}  Aperçu", icon::EYE), "Espace", viewer(ViewerAction::PreviewHit(index)));
+        item(ui, format!("{}  {}", icon::EYE, tr!("Aperçu")), tr!("Espace"), viewer(ViewerAction::PreviewHit(index)));
         if launch::kind(&hit.entry.name) == launch::Kind::Document {
             let open = ViewerAction::Open { path: path.clone(), how: Launch::Default };
-            item(ui, format!("{}  Ouvrir", icon::ARROW_SQUARE_OUT), "", viewer(open));
+            item(ui, format!("{}  {}", icon::ARROW_SQUARE_OUT, tr!("Ouvrir")), "", viewer(open));
         }
         let follow = ViewerAction::FollowPath { path: path.clone(), size: hit.entry.size.unwrap_or(0) };
-        item(ui, format!("{}  Suivre le fichier", icon::PULSE), "", viewer(follow));
+        item(ui, format!("{}  {}", icon::PULSE, tr!("Suivre le fichier")), "", viewer(follow));
     }
     let reveal = ViewerAction::Reveal { path: path.clone(), then: None };
-    item(ui, format!("{}  Afficher dans son dossier", icon::FOLDER), "Double-clic", viewer(reveal));
+    item(ui, format!("{}  {}", icon::FOLDER, tr!("Afficher dans son dossier")), tr!("Double-clic"), viewer(reveal));
     ui.separator();
     let download = ViewerAction::Download(vec![Item {
         path: path.clone(),
         is_dir: hit.entry.is_dir(),
         size: hit.entry.size.unwrap_or(0),
     }]);
-    item(ui, format!("{}  Télécharger…", icon::DOWNLOAD_SIMPLE), "", viewer(download));
+    item(ui, format!("{}  {}", icon::DOWNLOAD_SIMPLE, tr!("Télécharger…")), "", viewer(download));
     let copy = ViewerAction::Copy {
         text: path.to_string(),
-        notice: "Chemin copié",
+        notice: tr!("Chemin copié"),
     };
-    item(ui, format!("{}  Copier le chemin", icon::COPY_SIMPLE), "", viewer(copy));
+    item(ui, format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier le chemin")), "", viewer(copy));
 }

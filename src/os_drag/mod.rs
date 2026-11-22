@@ -55,6 +55,6 @@ pub fn drag_out(fetcher: Fetcher, storage: Arc<dyn Storage>, items: Vec<Item>) -
     #[cfg(not(windows))]
     {
         let _ = (fetcher, storage, items);
-        anyhow::bail!("glisser des fichiers hors de l'application n'est pas encore possible sur ce système")
+        anyhow::bail!(tr!("glisser des fichiers hors de l'application n'est pas encore possible sur ce système"))
     }
 }

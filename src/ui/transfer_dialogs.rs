@@ -113,11 +113,15 @@ fn describe(version: Version) -> String {
 fn conflict(ui: &mut Ui, p: &Palette, form: &mut ConflictForm, outcome: &mut Outcome) {
     ui.set_width(CONFLICT_WIDTH);
     let question = &form.question;
-    title(ui, p, "Ce fichier existe déjà");
+    title(ui, p, tr!("Ce fichier existe déjà"));
     ui.add(
         Label::new(
-            RichText::new(format!("« {} » est déjà présent dans {}.", question.name, short_folder(&question.folder)))
-                .color(p.text),
+            RichText::new(tr!(
+                "« {name} » est déjà présent dans {folder}.",
+                name = question.name,
+                folder = short_folder(&question.folder)
+            ))
+            .color(p.text),
         )
         .wrap(),
     )
@@ -125,8 +129,8 @@ fn conflict(ui: &mut Ui, p: &Palette, form: &mut ConflictForm, outcome: &mut Out
     ui.add_space(10.0);
 
     let (source_place, existing_place) = match question.direction {
-        Direction::Download => ("Sur le serveur", "Sur cet ordinateur"),
-        Direction::Upload => ("Sur cet ordinateur", "Sur le serveur"),
+        Direction::Download => (tr!("Sur le serveur"), tr!("Sur cet ordinateur")),
+        Direction::Upload => (tr!("Sur cet ordinateur"), tr!("Sur le serveur")),
     };
     let newer = match (question.source.modified, question.existing.modified) {
         (Some(source), Some(existing)) if source > existing + 1 => Some(true),
@@ -134,8 +138,8 @@ fn conflict(ui: &mut Ui, p: &Palette, form: &mut ConflictForm, outcome: &mut Out
         _ => None,
     };
     let size_note = |this: u64, other: u64| match this.cmp(&other) {
-        std::cmp::Ordering::Greater => Some("plus grand"),
-        std::cmp::Ordering::Less => Some("plus petit"),
+        std::cmp::Ordering::Greater => Some(tr!("plus grand")),
+        std::cmp::Ordering::Less => Some(tr!("plus petit")),
         std::cmp::Ordering::Equal => None,
     };
     let source_glyph = match question.direction {
@@ -146,42 +150,42 @@ fn conflict(ui: &mut Ui, p: &Palette, form: &mut ConflictForm, outcome: &mut Out
         ui,
         p,
         source_glyph,
-        &format!("Nouveau · {source_place}"),
+        &tr!("Nouveau · {place}", place = source_place),
         question.source,
-        [newer.filter(|newer| *newer).map(|_| "plus récent"), size_note(question.source.size, question.existing.size)],
+        [newer.filter(|newer| *newer).map(|_| tr!("plus récent")), size_note(question.source.size, question.existing.size)],
     );
     ui.add_space(4.0);
     version_card(
         ui,
         p,
         icon::FILE,
-        &format!("Présent · {existing_place}"),
+        &tr!("Présent · {place}", place = existing_place),
         question.existing,
-        [newer.filter(|newer| !newer).map(|_| "plus récent"), size_note(question.existing.size, question.source.size)],
+        [newer.filter(|newer| !newer).map(|_| tr!("plus récent")), size_note(question.existing.size, question.source.size)],
     );
     ui.add_space(14.0);
 
     let choices: [(ConflictPolicy, &str, bool); 6] = [
-        (ConflictPolicy::Overwrite, "Le fichier présent est remplacé.", true),
-        (ConflictPolicy::OverwriteIfNewer, "Remplacé seulement si le nouveau est plus récent.", true),
+        (ConflictPolicy::Overwrite, tr!("Le fichier présent est remplacé."), true),
+        (ConflictPolicy::OverwriteIfNewer, tr!("Remplacé seulement si le nouveau est plus récent."), true),
         (
             ConflictPolicy::OverwriteIfSizeDiffers,
-            "Remplacé seulement si les tailles diffèrent.",
+            tr!("Remplacé seulement si les tailles diffèrent."),
             true,
         ),
         (
             ConflictPolicy::Resume,
             if question.can_resume {
-                "Le fichier présent est le début du nouveau, interrompu : seule la suite est copiée."
+                tr!("Le fichier présent est le début du nouveau, interrompu : seule la suite est copiée.")
             } else {
-                "Possible seulement quand le fichier présent est plus petit, et que la connexion sait reprendre."
+                tr!("Possible seulement quand le fichier présent est plus petit, et que la connexion sait reprendre.")
             },
             question.can_resume,
         ),
         (ConflictPolicy::Rename, "", true),
-        (ConflictPolicy::Skip, "Le fichier présent est laissé tel quel.", true),
+        (ConflictPolicy::Skip, tr!("Le fichier présent est laissé tel quel."), true),
     ];
-    let renamed = format!("La copie s'appellera « {} ».", question.renamed);
+    let renamed = tr!("La copie s'appellera « {name} ».", name = question.renamed);
     let gap = ui.spacing().item_spacing.x;
     let width = (CONFLICT_WIDTH - 2.0 * gap) / 3.0;
     for row in choices.chunks(3) {
@@ -203,16 +207,21 @@ fn conflict(ui: &mut Ui, p: &Palette, form: &mut ConflictForm, outcome: &mut Out
     if question.others > 0 || question.more {
         let label = if question.more {
             // The files of a folder are still being found: how many is not known.
-            "Appliquer à tous les fichiers déjà présents".to_owned()
-        } else if question.others > 1 {
-            format!("Appliquer aux {} autres fichiers déjà présents", question.others)
+            tr!("Appliquer à tous les fichiers déjà présents").to_owned()
         } else {
-            "Appliquer aussi à l'autre fichier déjà présent".to_owned()
+            trn!(
+                question.others,
+                "Appliquer aussi à l'autre fichier déjà présent",
+                "Appliquer aux {n} autres fichiers déjà présents"
+            )
         };
         checkbox(ui, p, &mut form.all, label);
         ui.add_space(4.0);
     }
-    ui.label(small(p, "Échap ignore ce fichier. La règle par défaut se change dans le panneau des transferts."));
+    ui.label(small(
+        p,
+        tr!("Échap ignore ce fichier. La règle par défaut se change dans le panneau des transferts."),
+    ));
 }
 
 /// A long folder keeps its start and its last two levels: the drive and
@@ -255,26 +264,26 @@ fn version_card(ui: &mut Ui, p: &Palette, glyph: &str, place: &str, version: Ver
 
 fn sync_form(ui: &mut Ui, p: &Palette, form: &mut SyncForm, outcome: &mut Outcome) {
     ui.set_width(SYNC_WIDTH);
-    title(ui, p, "Synchroniser un dossier");
+    title(ui, p, tr!("Synchroniser un dossier"));
 
     egui::Grid::new("sync-folders").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-        ui.label(small(p, "Distant"));
+        ui.label(small(p, tr!("Distant")));
         ui.horizontal(|ui| {
             ui.label(RichText::new(icon::HARD_DRIVES).color(p.accent));
             ui.add(Label::new(RichText::new(format!("{} · {}", form.title, form.remote)).color(p.text)).truncate());
         });
         ui.end_row();
-        ui.label(small(p, "Local"));
+        ui.label(small(p, tr!("Local")));
         ui.horizontal(|ui| {
             ui.label(RichText::new(icon::LAPTOP).color(p.accent));
             let full = form
                 .local
                 .as_ref()
-                .map_or_else(|| "Aucun dossier choisi".to_owned(), |local| local.display().to_string());
+                .map_or_else(|| tr!("Aucun dossier choisi").to_owned(), |local| local.display().to_string());
             ui.add(Label::new(RichText::new(short_folder(&full)).color(p.text)).truncate())
                 .on_hover_text(full);
-            if !crate::dev::active() && ui.button("Changer…").clicked() {
-                let mut dialog = rfd::FileDialog::new().set_title("Dossier local à synchroniser");
+            if !crate::dev::active() && ui.button(tr!("Changer…")).clicked() {
+                let mut dialog = rfd::FileDialog::new().set_title(tr!("Dossier local à synchroniser"));
                 if let Some(local) = &form.local {
                     dialog = dialog.set_directory(local);
                 }
@@ -312,7 +321,7 @@ fn sync_form(ui: &mut Ui, p: &Palette, form: &mut SyncForm, outcome: &mut Outcom
     ui.label(small(p, form.direction.hint()));
     ui.add_space(4.0);
     ui.add_enabled_ui(form.direction.can_mirror(), |ui| {
-        let label = "Miroir : supprimer aussi ce qui n'existe que du côté de la destination";
+        let label = tr!("Miroir : supprimer aussi ce qui n'existe que du côté de la destination");
         if checkbox(ui, p, &mut form.mirror, label).changed() {
             form.stale = true;
         }
@@ -327,10 +336,10 @@ fn sync_form(ui: &mut Ui, p: &Palette, form: &mut SyncForm, outcome: &mut Outcom
     ui.horizontal(|ui| {
         let mut parts = Vec::new();
         if totals.uploads > 0 {
-            parts.push(format::count(totals.uploads, "envoi", "envois"));
+            parts.push(trn!(totals.uploads, "{n} envoi", "{n} envois"));
         }
         if totals.downloads > 0 {
-            parts.push(format::count(totals.downloads, "téléchargement", "téléchargements"));
+            parts.push(trn!(totals.downloads, "{n} téléchargement", "{n} téléchargements"));
         }
         if totals.bytes > 0 {
             parts.push(format::size(totals.bytes));
@@ -338,13 +347,17 @@ fn sync_form(ui: &mut Ui, p: &Palette, form: &mut SyncForm, outcome: &mut Outcom
         ui.label(small(p, parts.join(" · ")));
         if totals.deletions > 0 {
             ui.label(
-                RichText::new(format!("{}  {}", icon::TRASH, format::count(totals.deletions, "suppression", "suppressions")))
-                    .size(12.0)
-                    .color(p.danger),
+                RichText::new(format!(
+                    "{}  {}",
+                    icon::TRASH,
+                    trn!(totals.deletions, "{n} suppression", "{n} suppressions")
+                ))
+                .size(12.0)
+                .color(p.danger),
             );
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let label = format!("Synchroniser ({count})");
+            let label = tr!("Synchroniser ({count})", count);
             let clicked = if totals.deletions > 0 {
                 count > 0 && danger_button(ui, p, &label).clicked()
             } else {
@@ -353,7 +366,7 @@ fn sync_form(ui: &mut Ui, p: &Palette, form: &mut SyncForm, outcome: &mut Outcom
             if clicked {
                 *outcome = Outcome::Confirmed;
             }
-            if ui.button("Annuler").clicked() {
+            if ui.button(tr!("Annuler")).clicked() {
                 *outcome = Outcome::Cancelled;
             }
         });
@@ -365,10 +378,14 @@ fn preview(ui: &mut Ui, p: &Palette, form: &mut SyncForm) {
         SyncState::Compared(lines) if !lines.is_empty() => lines,
         state => {
             let (glyph, tint, text) = match state {
-                SyncState::Idle if form.local.is_none() => (icon::FOLDER_OPEN, p.faint, "Choisissez un dossier local.".to_owned()),
-                SyncState::Idle | SyncState::Comparing(_) => ("", p.accent, "Comparaison des deux dossiers…".to_owned()),
-                SyncState::Failed(error) => (icon::WARNING_CIRCLE, p.danger, format!("Comparaison impossible : {error}")),
-                SyncState::Compared(_) => (icon::CHECK_CIRCLE, p.success, "Les deux dossiers sont identiques.".to_owned()),
+                SyncState::Idle if form.local.is_none() => {
+                    (icon::FOLDER_OPEN, p.faint, tr!("Choisissez un dossier local.").to_owned())
+                }
+                SyncState::Idle | SyncState::Comparing(_) => ("", p.accent, tr!("Comparaison des deux dossiers…").to_owned()),
+                SyncState::Failed(error) => (icon::WARNING_CIRCLE, p.danger, tr!("Comparaison impossible : {error}", error)),
+                SyncState::Compared(_) => {
+                    (icon::CHECK_CIRCLE, p.success, tr!("Les deux dossiers sont identiques.").to_owned())
+                }
             };
             let (rect, _) = ui.allocate_exact_size(vec2(SYNC_WIDTH, PREVIEW_HEIGHT), Sense::hover());
             ui.painter().rect_filled(rect, 8, p.surface);
@@ -388,17 +405,17 @@ fn preview(ui: &mut Ui, p: &Palette, form: &mut SyncForm) {
     };
 
     ui.horizontal(|ui| {
-        ui.label(small(p, format::count(lines.len(), "différence", "différences")));
+        ui.label(small(p, trn!(lines.len(), "{n} différence", "{n} différences")));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let link = |ui: &mut Ui, text: &str| {
                 ui.add(Label::new(RichText::new(text).size(12.5).color(p.accent)).sense(Sense::click()))
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
             };
-            if link(ui, "Tout décocher") {
+            if link(ui, tr!("Tout décocher")) {
                 lines.iter_mut().for_each(|line| line.selected = false);
             }
-            if link(ui, "Tout cocher") {
+            if link(ui, tr!("Tout cocher")) {
                 lines.iter_mut().for_each(|line| line.selected = true);
             }
         });
@@ -420,7 +437,7 @@ fn preview(ui: &mut Ui, p: &Palette, form: &mut SyncForm) {
             .column(Column::exact(150.0))
             .column(Column::exact(150.0))
             .header(24.0, |mut header| {
-                for title in ["", "Action", "Fichier", "Local", "Distant"] {
+                for title in ["", tr!("Action"), tr!("Fichier"), tr!("Local"), tr!("Distant")] {
                     header.col(|ui| {
                         ui.label(RichText::new(title).size(12.0).color(p.muted));
                     });
@@ -471,10 +488,10 @@ fn preview(ui: &mut Ui, p: &Palette, form: &mut SyncForm) {
 
 fn action_look(p: &Palette, line: &SyncLine) -> (&'static str, &'static str, egui::Color32) {
     match line.action {
-        SyncAction::Upload => (icon::ARROW_UP, "Envoyer", p.success),
-        SyncAction::Download => (icon::ARROW_DOWN, "Recevoir", p.accent),
-        SyncAction::DeleteRemote => (icon::TRASH, "Supprimer à distance", p.danger),
-        SyncAction::DeleteLocal => (icon::TRASH, "Supprimer en local", p.danger),
+        SyncAction::Upload => (icon::ARROW_UP, tr!("Envoyer"), p.success),
+        SyncAction::Download => (icon::ARROW_DOWN, tr!("Recevoir"), p.accent),
+        SyncAction::DeleteRemote => (icon::TRASH, tr!("Supprimer à distance"), p.danger),
+        SyncAction::DeleteLocal => (icon::TRASH, tr!("Supprimer en local"), p.danger),
     }
 }
 

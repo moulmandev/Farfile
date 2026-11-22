@@ -108,37 +108,53 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
         ui.label(RichText::new(icon::PLUGS_CONNECTED).size(20.0).color(p.accent));
         ui.label(RichText::new(crate::APP_NAME).font(semibold(16.0)).color(p.text));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if icon_button(ui, p, icon::SIDEBAR_SIMPLE, "Masquer la liste (Ctrl+B)", true).clicked() {
+            if icon_button(ui, p, icon::SIDEBAR_SIMPLE, tr!("Masquer la liste (Ctrl+B)"), true).clicked() {
                 actions.push(Action::ToggleSidebar);
             }
         });
     });
     ui.add_space(8.0);
     super::local::sidebar_entry(ui, p, view.active, view.open, actions);
+    // Right under it, with the same spacing as between two connections.
+    ui.add_space(-5.0);
+    super::monitor::sidebar_entry(ui, p, view.active, actions);
+    ui.add_space(6.0);
 
+    // The buttons first, from the right: the title takes what is left, cut
+    // short when a language names the list at length.
     ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        ui.label(RichText::new("CONNEXIONS").size(11.0).color(p.faint));
-        if !view.profiles.is_empty() {
-            ui.label(RichText::new(view.profiles.len().to_string()).size(11.0).color(p.faint));
-        }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            if icon_button(ui, p, icon::PLUS, "Nouvelle connexion", true).clicked() {
+            if icon_button(ui, p, icon::PLUS, tr!("Nouvelle connexion"), true).clicked() {
                 actions.push(Action::NewProfile);
             }
-            let import = "Importer depuis FileZilla, Windows Terminal ou ~/.ssh/config";
+            let import = tr!("Importer depuis FileZilla, Windows Terminal ou ~/.ssh/config");
             if icon_button(ui, p, icon::DOWNLOAD_SIMPLE, import, true).clicked() {
                 actions.push(Action::AskImport);
             }
             super::hosts::export_button(ui, p, actions);
-            if icon_button(ui, p, icon::FOLDER_PLUS, "Nouveau dossier", true).clicked() {
+            if icon_button(ui, p, icon::FOLDER_PLUS, tr!("Nouveau dossier"), true).clicked() {
                 actions.push(Action::AskNewHostFolder {
                     parent: String::new(),
                     profile: None,
                 });
             }
             super::ssh_auth::sidebar_button(ui, p, actions);
+            ui.add_space(2.0);
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.add_space(4.0);
+                // The count when there is room for it.
+                let mut title = tr!("CONNEXIONS").to_owned();
+                if !view.profiles.is_empty() {
+                    let counted = format!("{title}  {}", view.profiles.len());
+                    let width = ui.painter().layout_no_wrap(counted.clone(), FontId::proportional(11.0), p.faint).size().x;
+                    if width <= ui.available_width() {
+                        title = counted;
+                    }
+                }
+                ui.add(Label::new(RichText::new(title).size(11.0).color(p.faint)).truncate());
+            });
         });
     });
 
@@ -147,7 +163,7 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
     if view.profiles.len() >= FILTER_FROM {
         let search = ui.add(
             egui::TextEdit::singleline(&mut state.filter)
-                .hint_text(format!("{}  Rechercher", icon::MAGNIFYING_GLASS))
+                .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher")))
                 .margin(egui::Margin::symmetric(8, 5))
                 .desired_width(ui.available_width()),
         );
@@ -181,7 +197,7 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
             if view.profiles.is_empty() && folders.is_empty() {
                 ui.add_space(8.0);
                 ui.label(
-                    RichText::new("Aucune connexion enregistrée.\nAjoutez-en une avec le bouton +.")
+                    RichText::new(tr!("Aucune connexion enregistrée.\nAjoutez-en une avec le bouton +."))
                         .size(12.5)
                         .color(p.muted),
                 );
@@ -240,7 +256,7 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
 
             if listing.first.is_none() && filtering {
                 ui.add_space(8.0);
-                ui.label(RichText::new("Aucune connexion ne correspond.").size(12.5).color(p.muted));
+                ui.label(RichText::new(tr!("Aucune connexion ne correspond.")).size(12.5).color(p.muted));
             }
             first = listing.first.take();
 
@@ -258,7 +274,7 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
                     ui.painter().text(
                         hint.center(),
                         Align2::CENTER_CENTER,
-                        "Sortir du dossier",
+                        tr!("Sortir du dossier"),
                         FontId::proportional(12.0),
                         p.muted,
                     );
@@ -279,6 +295,7 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             theme_switch(ui, p, actions);
+            super::language::button(ui, p, view.settings.language.as_deref(), actions);
             super::update::version_button(ui, p, view.updater, view.settings.check_updates, actions);
         });
     });
@@ -286,29 +303,31 @@ pub fn show(ui: &mut Ui, p: &Palette, view: &View<'_>, state: &mut State, action
 
 /// What is left of the column once folded: a way back, the search, and the
 /// button to add a connection.
-pub fn rail(ui: &mut Ui, p: &Palette, updater: &crate::update::Updater, check_updates: bool, actions: &mut Vec<Action>) {
+pub fn rail(ui: &mut Ui, p: &Palette, updater: &crate::update::Updater, settings: &Settings, actions: &mut Vec<Action>) {
     ui.add_space(2.0);
-    if icon_button(ui, p, icon::SIDEBAR_SIMPLE, "Afficher la liste des connexions (Ctrl+B)", true).clicked() {
+    if icon_button(ui, p, icon::SIDEBAR_SIMPLE, tr!("Afficher la liste des connexions (Ctrl+B)"), true).clicked() {
         actions.push(Action::ToggleSidebar);
     }
-    if icon_button(ui, p, icon::MAGNIFYING_GLASS, "Ouvrir une connexion… (Ctrl+K)", true).clicked() {
+    if icon_button(ui, p, icon::MAGNIFYING_GLASS, tr!("Ouvrir une connexion… (Ctrl+K)"), true).clicked() {
         actions.push(Action::QuickOpen);
     }
     super::local::rail_button(ui, p, actions);
-    if icon_button(ui, p, icon::PLUS, "Nouvelle connexion", true).clicked() {
+    super::monitor::rail_button(ui, p, actions);
+    if icon_button(ui, p, icon::PLUS, tr!("Nouvelle connexion"), true).clicked() {
         actions.push(Action::NewProfile);
     }
     ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
         theme_switch(ui, p, actions);
-        super::update::version_button(ui, p, updater, check_updates, actions);
+        super::language::button(ui, p, settings.language.as_deref(), actions);
+        super::update::version_button(ui, p, updater, settings.check_updates, actions);
     });
 }
 
 fn theme_switch(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
     let (glyph, tooltip) = if p.dark {
-        (icon::SUN, "Passer au thème clair")
+        (icon::SUN, tr!("Passer au thème clair"))
     } else {
-        (icon::MOON, "Passer au thème sombre")
+        (icon::MOON, tr!("Passer au thème sombre"))
     };
     if icon_button(ui, p, glyph, tooltip, true).clicked() {
         actions.push(Action::ToggleTheme);
@@ -367,7 +386,7 @@ impl Listing<'_> {
             group_glyphs(ui, p, rect, open, icon::STAR, filled_icon(15.0), p.folder);
             count_label(ui, p, rect, count);
             let text = Rect::from_min_max(rect.min + vec2(LABEL_X, 0.0), rect.max - vec2(34.0, 0.0));
-            text_in(ui, text, RichText::new("Favoris").color(p.text));
+            text_in(ui, text, RichText::new(tr!("Favoris")).color(p.text));
         }
         if let Some(dragged) = dropped::<Dragged>(&response) {
             self.actions.push(Action::SetFavorite(dragged.0.clone(), true));
@@ -538,9 +557,9 @@ impl Listing<'_> {
             let size = Vec2::splat(22.0);
             let star = Rect::from_center_size(pos2(rect.right() - 39.0, rect.center().y), size);
             let (font, color, tooltip) = if profile.favorite {
-                (filled_icon(14.0), p.folder, "Retirer des favoris")
+                (filled_icon(14.0), p.folder, tr!("Retirer des favoris"))
             } else {
-                (FontId::proportional(14.0), p.muted, "Ajouter aux favoris")
+                (FontId::proportional(14.0), p.muted, tr!("Ajouter aux favoris"))
             };
             if row_button(ui, p, star, star_id(id), icon::STAR, font, color)
                 .on_hover_text(tooltip)
@@ -666,16 +685,16 @@ fn count_label(ui: &Ui, p: &Palette, rect: Rect, count: usize) {
 }
 
 fn folder_menu(ui: &mut Ui, p: &Palette, path: &str, folders: &[String], actions: &mut Vec<Action>) {
-    if menu_item(ui, format!("{}  Nouvelle connexion ici", icon::PLUS)) {
+    if menu_item(ui, format!("{}  {}", icon::PLUS, tr!("Nouvelle connexion ici"))) {
         actions.push(Action::NewProfileIn(path.to_owned()));
     }
-    if menu_item(ui, format!("{}  Nouveau sous-dossier…", icon::FOLDER_PLUS)) {
+    if menu_item(ui, format!("{}  {}", icon::FOLDER_PLUS, tr!("Nouveau sous-dossier…"))) {
         actions.push(Action::AskNewHostFolder {
             parent: path.to_owned(),
             profile: None,
         });
     }
-    if menu_item(ui, format!("{}  Renommer…", icon::PENCIL_SIMPLE)) {
+    if menu_item(ui, format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Renommer…"))) {
         actions.push(Action::AskRenameHostFolder(path.to_owned()));
     }
     let parent = profiles::folder_parent(path);
@@ -685,8 +704,9 @@ fn folder_menu(ui: &mut Ui, p: &Palette, path: &str, folders: &[String], actions
         .filter(|folder| **folder != parent && !profiles::folder_contains(path, folder))
         .collect();
     if !targets.is_empty() || !parent.is_empty() {
-        ui.menu_button(format!("{}  Déplacer vers", icon::FOLDER), |ui| {
-            if !parent.is_empty() && menu_item(ui, format!("{}  Le premier niveau", icon::ARROW_ELBOW_LEFT_UP)) {
+        ui.menu_button(format!("{}  {}", icon::FOLDER, tr!("Déplacer vers")), |ui| {
+            let top = format!("{}  {}", icon::ARROW_ELBOW_LEFT_UP, tr!("Le premier niveau"));
+            if !parent.is_empty() && menu_item(ui, top) {
                 actions.push(Action::MoveHostFolder(path.to_owned(), String::new()));
             }
             for folder in targets {
@@ -698,7 +718,7 @@ fn folder_menu(ui: &mut Ui, p: &Palette, path: &str, folders: &[String], actions
     }
     super::hosts::folder_menu(ui, p, path, actions);
     ui.separator();
-    let delete = RichText::new(format!("{}  Supprimer le dossier…", icon::TRASH)).color(p.danger);
+    let delete = RichText::new(format!("{}  {}", icon::TRASH, tr!("Supprimer le dossier…"))).color(p.danger);
     if menu_item(ui, delete) {
         actions.push(Action::AskDeleteHostFolder(path.to_owned()));
     }
@@ -706,30 +726,31 @@ fn folder_menu(ui: &mut Ui, p: &Palette, path: &str, folders: &[String], actions
 
 fn host_menu(ui: &mut Ui, p: &Palette, profile: &Profile, folders: &[String], actions: &mut Vec<Action>) {
     let id = || profile.id.clone();
-    if menu_item(ui, format!("{}  Ouvrir", icon::PLUGS_CONNECTED)) {
+    if menu_item(ui, format!("{}  {}", icon::PLUGS_CONNECTED, tr!("Ouvrir"))) {
         actions.push(Action::Connect(id()));
     }
-    if menu_item(ui, format!("{}  Ouvrir dans un nouvel onglet", icon::PLUS)) {
+    if menu_item(ui, format!("{}  {}", icon::PLUS, tr!("Ouvrir dans un nouvel onglet"))) {
         actions.push(Action::OpenTab(id(), None));
     }
     if profile.has_terminal() {
-        if menu_item(ui, format!("{}  Nouveau terminal", icon::TERMINAL_WINDOW)) {
+        if menu_item(ui, format!("{}  {}", icon::TERMINAL_WINDOW, tr!("Nouveau terminal"))) {
             actions.push(Action::OpenTab(id(), Some(Panes::Terminal)));
         }
-        if menu_item(ui, format!("{}  Fichiers et terminal", icon::SQUARE_SPLIT_VERTICAL)) {
+        if menu_item(ui, format!("{}  {}", icon::SQUARE_SPLIT_VERTICAL, tr!("Fichiers et terminal"))) {
             actions.push(Action::OpenTab(id(), Some(Panes::Both)));
         }
         super::ssh_auth::host_menu_items(ui, profile, actions);
+        super::monitor::host_menu_item(ui, profile, actions);
     }
     super::tunnels::host_menu(ui, profile, actions);
     ui.separator();
 
-    let favorite = if profile.favorite { "Retirer des favoris" } else { "Ajouter aux favoris" };
+    let favorite = if profile.favorite { tr!("Retirer des favoris") } else { tr!("Ajouter aux favoris") };
     if menu_item(ui, format!("{}  {favorite}", icon::STAR)) {
         actions.push(Action::SetFavorite(id(), !profile.favorite));
     }
     let current = profile.folder.as_str();
-    ui.menu_button(format!("{}  Déplacer vers", icon::FOLDER), |ui| {
+    ui.menu_button(format!("{}  {}", icon::FOLDER, tr!("Déplacer vers")), |ui| {
         for folder in folders {
             let mark = if folder == current { icon::CHECK } else { icon::FOLDER };
             if menu_item(ui, folder_entry(folder, mark)) && folder != current {
@@ -739,23 +760,23 @@ fn host_menu(ui: &mut Ui, p: &Palette, profile: &Profile, folders: &[String], ac
         if !folders.is_empty() {
             ui.separator();
         }
-        if menu_item(ui, format!("{}  Nouveau dossier…", icon::FOLDER_PLUS)) {
+        if menu_item(ui, format!("{}  {}", icon::FOLDER_PLUS, tr!("Nouveau dossier…"))) {
             actions.push(Action::AskNewHostFolder {
                 parent: String::new(),
                 profile: Some(id()),
             });
         }
-        if !current.is_empty() && menu_item(ui, format!("{}  Sortir du dossier", icon::FOLDER_MINUS)) {
+        if !current.is_empty() && menu_item(ui, format!("{}  {}", icon::FOLDER_MINUS, tr!("Sortir du dossier"))) {
             actions.push(Action::MoveToFolder(id(), String::new()));
         }
     });
     super::hosts::host_menu(ui, p, profile, actions);
-    if menu_item(ui, format!("{}  Modifier…", icon::PENCIL_SIMPLE)) {
+    if menu_item(ui, format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Modifier…"))) {
         actions.push(Action::EditProfile(id()));
     }
     ui.separator();
 
-    let delete = RichText::new(format!("{}  Supprimer…", icon::TRASH)).color(p.danger);
+    let delete = RichText::new(format!("{}  {}", icon::TRASH, tr!("Supprimer…"))).color(p.danger);
     if menu_item(ui, delete) {
         actions.push(Action::AskDeleteProfile(id()));
     }

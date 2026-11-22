@@ -323,7 +323,7 @@ pub trait Storage: Send + Sync + 'static {
     /// A time-limited link anyone can use to download the file.
     /// Only meaningful when [`Storage::can_share`] is true.
     async fn share_url(&self, _path: &RemotePath, _expires: Duration) -> Result<String> {
-        bail!("ce type de connexion ne permet pas de créer des liens")
+        bail!(tr!("ce type de connexion ne permet pas de créer des liens"))
     }
 
     fn can_share(&self) -> bool {
@@ -355,7 +355,7 @@ pub trait Storage: Send + Sync + 'static {
     /// fetching the rest: what the previews and the log follower show.
     /// Fewer bytes come back at the end of the file, none past it.
     async fn read_range(&self, _path: &RemotePath, _offset: u64, _len: u64) -> Result<Chunk> {
-        bail!("ce type de connexion ne permet pas de lire une partie d'un fichier")
+        bail!(tr!("ce type de connexion ne permet pas de lire une partie d'un fichier"))
     }
 
     /// Which of the operations below this connection supports.
@@ -368,23 +368,23 @@ pub trait Storage: Send + Sync + 'static {
     /// callers check first. `progress` counts the bytes when the backend has
     /// to copy them (S3), and is checked for cancellation.
     async fn rename(&self, _from: &RemotePath, _to: &RemotePath, _is_dir: bool, _progress: &Progress) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de renommer")
+        bail!(tr!("ce type de connexion ne permet pas de renommer"))
     }
 
     /// Copies `from` to `to` on this connection, a folder with everything it
     /// holds. `progress` counts the bytes copied, when known.
     async fn copy(&self, _from: &RemotePath, _to: &RemotePath, _is_dir: bool, _progress: &Progress) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de copier sur le serveur")
+        bail!(tr!("ce type de connexion ne permet pas de copier sur le serveur"))
     }
 
     /// Sets the permission bits (`0o755`) of one file or folder.
     async fn set_permissions(&self, _path: &RemotePath, _mode: u32) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de changer les permissions")
+        bail!(tr!("ce type de connexion ne permet pas de changer les permissions"))
     }
 
     /// Changes the owner and the group, as numeric ids; `None` keeps it.
     async fn set_owner(&self, _path: &RemotePath, _uid: Option<u32>, _gid: Option<u32>) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de changer le propriétaire")
+        bail!(tr!("ce type de connexion ne permet pas de changer le propriétaire"))
     }
 
     /// The users and groups the server knows, to show names for ids.
@@ -428,7 +428,7 @@ pub trait Storage: Send + Sync + 'static {
         _resume: bool,
         _progress: &Progress,
     ) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de reprendre un téléchargement")
+        bail!(tr!("ce type de connexion ne permet pas de reprendre un téléchargement"))
     }
 
     /// Whether [`Storage::upload_resumable`] works on this connection.
@@ -440,7 +440,7 @@ pub trait Storage: Send + Sync + 'static {
     /// the beginning of `src` and only the rest is sent. Unlike
     /// [`Storage::upload`], what was sent stays in place on failure.
     async fn upload_resumable(&self, _src: &Path, _dest: &RemotePath, _resume: bool, _progress: &Progress) -> Result<()> {
-        bail!("ce type de connexion ne permet pas de reprendre un envoi")
+        bail!(tr!("ce type de connexion ne permet pas de reprendre un envoi"))
     }
 
     /// Gives up an upload made with [`Storage::upload_resumable`] and left
@@ -488,7 +488,7 @@ pub trait Storage: Send + Sync + 'static {
     /// Gives a remote file the date of its original, so that comparing them
     /// later finds them equal.
     async fn set_mtime(&self, _path: &RemotePath, _modified: i64) -> Result<()> {
-        bail!("ce serveur ne permet pas de changer la date d'un fichier")
+        bail!(tr!("ce serveur ne permet pas de changer la date d'un fichier"))
     }
 
     /// Whether [`Storage::set_mtime`] works: otherwise a file is dated by
@@ -543,7 +543,7 @@ where
         let mut buffer = vec![0u8; CHUNK];
         loop {
             if progress.is_cancelled() {
-                bail!("annulé");
+                bail!(tr!("annulé"));
             }
             let read = reader.read(&mut buffer).await?;
             if read == 0 {
@@ -561,7 +561,7 @@ where
     match copied {
         Ok(()) => tokio::fs::rename(&partial, dest)
             .await
-            .with_context(|| format!("impossible d'écrire {}", dest.display())),
+            .with_context(|| tr!("impossible d'écrire {path}", path = dest.display())),
         Err(error) => {
             let _ = tokio::fs::remove_file(&partial).await;
             Err(error)
@@ -585,14 +585,14 @@ where
 {
     let mut file = tokio::fs::File::open(src)
         .await
-        .with_context(|| format!("impossible de lire {}", src.display()))?;
+        .with_context(|| tr!("impossible de lire {path}", path = src.display()))?;
     if offset > 0 {
         file.seek(std::io::SeekFrom::Start(offset)).await?;
     }
     let mut buffer = vec![0u8; CHUNK];
     loop {
         if progress.is_cancelled() {
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let read = file.read(&mut buffer).await?;
         if read == 0 {
@@ -623,7 +623,7 @@ where
         .truncate(offset == 0)
         .open(dest)
         .await
-        .with_context(|| format!("impossible d'écrire {}", dest.display()))?;
+        .with_context(|| tr!("impossible d'écrire {path}", path = dest.display()))?;
     if offset > 0 {
         // Whatever lies beyond the part being kept is not trusted.
         file.set_len(offset).await?;
@@ -634,7 +634,7 @@ where
     loop {
         if progress.is_cancelled() {
             file.flush().await?;
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let read = reader.read(&mut buffer).await?;
         if read == 0 {

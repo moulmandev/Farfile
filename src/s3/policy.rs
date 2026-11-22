@@ -6,44 +6,46 @@ use serde_json::Value;
 /// The policy reformatted for reading, or the first problem found.
 pub fn check(text: &str) -> Result<String, String> {
     let value: Value = serde_json::from_str(text).map_err(|error| {
-        format!("JSON invalide (ligne {}, colonne {}) : {error}", error.line(), error.column())
+        tr!("JSON invalide (ligne {line}, colonne {column}) : {error}", line = error.line(), column = error.column(), error)
     })?;
     let Value::Object(policy) = &value else {
-        return Err("La politique doit être un objet JSON : { \"Version\": …, \"Statement\": […] }.".to_owned());
+        return Err(tr!("La politique doit être un objet JSON : { \"Version\": …, \"Statement\": […] }.").to_owned());
     };
     if let Some(version) = policy.get("Version")
         && !matches!(version.as_str(), Some("2012-10-17" | "2008-10-17"))
     {
-        return Err("« Version » doit valoir \"2012-10-17\".".to_owned());
+        return Err(tr!("« Version » doit valoir \"2012-10-17\".").to_owned());
     }
     let statements = match policy.get("Statement") {
         Some(Value::Array(statements)) if !statements.is_empty() => statements.iter().collect::<Vec<_>>(),
         Some(Value::Object(_)) => vec![&policy["Statement"]],
-        Some(_) => return Err("« Statement » doit contenir au moins une déclaration.".to_owned()),
-        None => return Err("Il manque « Statement », la liste des déclarations.".to_owned()),
+        Some(_) => return Err(tr!("« Statement » doit contenir au moins une déclaration.").to_owned()),
+        None => return Err(tr!("Il manque « Statement », la liste des déclarations.").to_owned()),
     };
     for (index, statement) in statements.iter().enumerate() {
         let name = match statement.get("Sid").and_then(Value::as_str) {
-            Some(sid) => format!("Déclaration « {sid} »"),
-            None => format!("Déclaration {}", index + 1),
+            Some(sid) => tr!("Déclaration « {sid} »", sid),
+            None => tr!("Déclaration {n}", n = index + 1),
         };
         let Value::Object(statement) = statement else {
-            return Err(format!("{name} : une déclaration est un objet JSON."));
+            return Err(tr!("{name} : une déclaration est un objet JSON.", name));
         };
         match statement.get("Effect").and_then(Value::as_str) {
             Some("Allow" | "Deny") => {}
-            Some(other) => return Err(format!("{name} : « Effect » vaut \"Allow\" ou \"Deny\", pas \"{other}\".")),
-            None => return Err(format!("{name} : il manque « Effect » (\"Allow\" ou \"Deny\").")),
+            Some(other) => {
+                return Err(tr!("{name} : « Effect » vaut \"Allow\" ou \"Deny\", pas \"{other}\".", name, other));
+            }
+            None => return Err(tr!("{name} : il manque « Effect » (\"Allow\" ou \"Deny\").", name)),
         }
         let has = |one: &str, other: &str| statement.contains_key(one) || statement.contains_key(other);
         if !has("Principal", "NotPrincipal") {
-            return Err(format!("{name} : il manque « Principal » (à qui la déclaration s'applique)."));
+            return Err(tr!("{name} : il manque « Principal » (à qui la déclaration s'applique).", name));
         }
         if !has("Action", "NotAction") {
-            return Err(format!("{name} : il manque « Action »."));
+            return Err(tr!("{name} : il manque « Action ».", name));
         }
         if !has("Resource", "NotResource") {
-            return Err(format!("{name} : il manque « Resource »."));
+            return Err(tr!("{name} : il manque « Resource ».", name));
         }
     }
     Ok(reindent(text))

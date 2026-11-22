@@ -4744,7 +4744,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "s3viewer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4766,6 +4766,7 @@ dependencies = [
  "open",
  "portable-pty",
  "rand 0.10.4",
+ "raw-window-handle",
  "regex",
  "rfd",
  "roxmltree",
@@ -4779,6 +4780,7 @@ dependencies = [
  "sha2",
  "suppaftp",
  "syntect",
+ "sys-locale",
  "tar",
  "tokio",
  "tokio-rustls 0.26.6",
@@ -5430,6 +5432,15 @@ dependencies = [
  "serde_derive",
  "thiserror 2.0.21",
  "walkdir",
+]
+
+[[package]]
+name = "sys-locale"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

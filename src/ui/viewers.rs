@@ -47,14 +47,14 @@ fn push(actions: &mut Vec<Action>, action: ViewerAction) {
 
 /// The entries of the file menu that look into the file.
 pub fn file_menu(ui: &mut Ui, entry: &Entry, actions: &mut Vec<Action>) {
-    let preview = Button::new(format!("{}  Aperçu", icon::EYE)).shortcut_text("Espace");
+    let preview = Button::new(format!("{}  {}", icon::EYE, tr!("Aperçu"))).shortcut_text(tr!("Espace"));
     if ui.add(preview).clicked() {
         push(actions, ViewerAction::Preview(entry.name.clone()));
         ui.close();
     }
     if ui
-        .button(format!("{}  Suivre le fichier", icon::PULSE))
-        .on_hover_text("Afficher en direct ce qui s'ajoute à la fin, comme tail -f")
+        .button(format!("{}  {}", icon::PULSE, tr!("Suivre le fichier")))
+        .on_hover_text(tr!("Afficher en direct ce qui s'ajoute à la fin, comme tail -f"))
         .clicked()
     {
         push(actions, ViewerAction::Follow(entry.name.clone()));
@@ -64,7 +64,7 @@ pub fn file_menu(ui: &mut Ui, entry: &Entry, actions: &mut Vec<Action>) {
 
 /// The button next to the filter that searches the subfolders too.
 pub fn search_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    let tooltip = "Rechercher dans ce dossier et ses sous-dossiers (Ctrl+Maj+F)";
+    let tooltip = tr!("Rechercher dans ce dossier et ses sous-dossiers (Ctrl+Maj+F)");
     if icon_button(ui, p, icon::BINOCULARS, tooltip, true).clicked() {
         push(actions, ViewerAction::Search);
     }
@@ -174,7 +174,7 @@ fn strip(ui: &mut Ui, p: &Palette, viewers: &mut Viewers) {
         ui.spacing_mut().item_spacing.x = 4.0;
         if let Some(search) = &viewers.search {
             let found = search.hits.len();
-            let text = if search.run.is_some() { format!("Recherche · {found}") } else { "Recherche".to_owned() };
+            let text = if search.run.is_some() { tr!("Recherche · {found}", found) } else { tr!("Recherche").to_owned() };
             let dot = search.running().then_some(p.accent);
             let active = pane == Pane::Search;
             let (clicked, closed) = chip(ui, p, icon::BINOCULARS, &text, active, dot, Id::new("search-chip"));
@@ -204,9 +204,9 @@ fn strip(ui: &mut Ui, p: &Palette, viewers: &mut Viewers) {
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let (glyph, tooltip) = if viewers.folded {
-                (icon::CARET_UP, "Déplier le panneau")
+                (icon::CARET_UP, tr!("Déplier le panneau"))
             } else {
-                (icon::CARET_DOWN, "Réduire le panneau")
+                (icon::CARET_DOWN, tr!("Réduire le panneau"))
             };
             if icon_button(ui, p, glyph, tooltip, true).clicked() {
                 viewers.folded = !viewers.folded;
@@ -264,6 +264,6 @@ fn chip(ui: &mut Ui, p: &Palette, glyph: &str, text: &str, active: bool, dot: Op
         let color = if close.hovered() { p.text } else { p.muted };
         ui.painter().text(cross.center(), Align2::CENTER_CENTER, icon::X, FontId::proportional(12.0), color);
     }
-    let closed = close.on_hover_text("Fermer").clicked() || response.middle_clicked();
+    let closed = close.on_hover_text(tr!("Fermer")).clicked() || response.middle_clicked();
     (response.clicked(), closed)
 }

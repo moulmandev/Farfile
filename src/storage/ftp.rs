@@ -93,13 +93,13 @@ fn ftp_err(error: FtpError) -> anyhow::Error {
         FtpError::UnexpectedResponse(response) => {
             let text = String::from_utf8_lossy(&response.body).trim().to_owned();
             if text.is_empty() {
-                anyhow!("le serveur a refusé la commande ({})", response.status)
+                anyhow!(tr!("le serveur a refusé la commande ({status})", status = response.status))
             } else {
                 anyhow!("{text}")
             }
         }
-        FtpError::ConnectionError(error) => anyhow!("connexion interrompue : {error}"),
-        FtpError::SecureError(error) => anyhow!("échec du chiffrement TLS : {error}"),
+        FtpError::ConnectionError(error) => anyhow!(tr!("connexion interrompue : {error}", error)),
+        FtpError::SecureError(error) => anyhow!(tr!("échec du chiffrement TLS : {error}", error)),
         other => anyhow!("{other}"),
     }
 }
@@ -158,9 +158,9 @@ impl FtpStorage {
         let address = (settings.host.as_str(), settings.port);
         let mut ftp = tokio::time::timeout(CONNECT_TIMEOUT, FtpStream::connect(address))
             .await
-            .map_err(|_| anyhow!("le serveur {} ne répond pas", settings.host))?
+            .map_err(|_| anyhow!(tr!("le serveur {host} ne répond pas", host = settings.host)))?
             .map_err(ftp_err)
-            .with_context(|| format!("connexion à {}:{} impossible", settings.host, settings.port))?;
+            .with_context(|| tr!("connexion à {host}:{port} impossible", host = settings.host, port = settings.port))?;
 
         if settings.tls {
             let connector = tokio_rustls::TlsConnector::from(self.tls_config()?);
@@ -178,7 +178,7 @@ impl FtpStorage {
         ftp.login(user, password)
             .await
             .map_err(ftp_err)
-            .context("identification refusée")?;
+            .context(tr!("identification refusée"))?;
 
         // Servers behind NAT often announce an address that is unreachable
         // from here: always go back to the one we connected to.
@@ -509,12 +509,12 @@ impl Storage for FtpStorage {
         let aside = folder.child(&format!(".{}.s3v-{tag}.old", dest.name()));
         if let Err(error) = self.rename_entry(dest, &aside).await {
             let _ = self.delete(&temp, false).await;
-            return Err(error.context("impossible de remplacer le fichier"));
+            return Err(error.context(tr!("impossible de remplacer le fichier")));
         }
         if let Err(error) = self.rename_entry(&temp, dest).await {
             let _ = self.rename_entry(&aside, dest).await;
             let _ = self.delete(&temp, false).await;
-            return Err(error.context("impossible de remplacer le fichier"));
+            return Err(error.context(tr!("impossible de remplacer le fichier")));
         }
         let _ = self.delete(&aside, false).await;
         Ok(())
@@ -566,7 +566,7 @@ impl Storage for FtpStorage {
         let remote = dest.to_string();
         let local = tokio::fs::metadata(src)
             .await
-            .with_context(|| format!("impossible de lire {}", src.display()))?
+            .with_context(|| tr!("impossible de lire {path}", path = src.display()))?
             .len();
         progress.set_total(local);
         let mut offset = 0;
@@ -609,7 +609,7 @@ impl Storage for FtpStorage {
     /// knowing neither keep the date of the upload.
     async fn set_mtime(&self, path: &RemotePath, modified: i64) -> Result<()> {
         let date = chrono::DateTime::from_timestamp(modified, 0)
-            .context("date invalide")?
+            .context(tr!("date invalide"))?
             .format("%Y%m%d%H%M%S")
             .to_string();
         let mut lease = self.lease().await?;

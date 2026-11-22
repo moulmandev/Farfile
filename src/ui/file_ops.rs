@@ -17,7 +17,8 @@ use super::Action;
 use super::dialogs::Outcome;
 use super::widgets::{checkbox, danger_button, drag_label, dropped, icon, icon_button, muted, primary_button, small};
 use crate::file_ops::{
-    Dragged, Existing, OpsState, Owner, Picked, Plan, Scope, Sizing, bookmark_of, describe, refuse, resolve_path, stem,
+    Dragged, Existing, OpsState, Owner, Picked, Plan, Scope, Sizing, bookmark_of, describe, permissions_label, refuse,
+    resolve_path, stem,
 };
 use crate::format;
 use crate::session::Session;
@@ -93,44 +94,44 @@ fn item(ui: &mut Ui, enabled: bool, text: impl Into<egui::WidgetText>, shortcut:
 pub fn context_menu(ui: &mut Ui, session: &Session, entry: &Entry, many: bool, actions: &mut Vec<Action>) {
     let ops = session.storage.operations();
     ui.separator();
-    if ops.rename && item(ui, true, format!("{}  Couper", icon::SCISSORS), "Ctrl+X") {
+    if ops.rename && item(ui, true, format!("{}  {}", icon::SCISSORS, tr!("Couper")), tr!("Ctrl+X")) {
         push(actions, OpsAction::Cut);
     }
-    if ops.copy && item(ui, true, format!("{}  Copier", icon::COPY), "Ctrl+C") {
+    if ops.copy && item(ui, true, format!("{}  {}", icon::COPY, tr!("Copier")), tr!("Ctrl+C")) {
         push(actions, OpsAction::Copy);
     }
     if let Some(clipboard) = session.file_ops.clipboard.filter(|clipboard| clipboard.here) {
         let into_folder = entry.is_dir() && !many;
         let text = if into_folder {
-            format!("{}  Coller dans « {} »", icon::CLIPBOARD, entry.name)
+            format!("{}  {}", icon::CLIPBOARD, tr!("Coller dans « {name} »", name = entry.name))
         } else {
-            format!("{}  Coller ({})", icon::CLIPBOARD, clipboard.count)
+            format!("{}  {}", icon::CLIPBOARD, tr!("Coller ({count})", count = clipboard.count))
         };
-        if item(ui, true, text, "Ctrl+V") {
+        if item(ui, true, text, tr!("Ctrl+V")) {
             push(actions, OpsAction::Paste(into_folder.then(|| entry.name.clone())));
         }
     }
-    if ops.copy && item(ui, true, format!("{}  Dupliquer", icon::STACK), "") {
+    if ops.copy && item(ui, true, format!("{}  {}", icon::STACK, tr!("Dupliquer")), "") {
         push(actions, OpsAction::Duplicate);
     }
-    if ops.rename && item(ui, true, format!("{}  Déplacer vers…", icon::ARROW_SQUARE_RIGHT), "") {
+    if ops.rename && item(ui, true, format!("{}  {}", icon::ARROW_SQUARE_RIGHT, tr!("Déplacer vers…")), "") {
         push(actions, OpsAction::AskMoveTo { copy: false });
     }
-    if ops.copy && item(ui, true, format!("{}  Copier vers…", icon::FOLDERS), "") {
+    if ops.copy && item(ui, true, format!("{}  {}", icon::FOLDERS, tr!("Copier vers…")), "") {
         push(actions, OpsAction::AskMoveTo { copy: true });
     }
     ui.separator();
-    if ops.rename && item(ui, !many, format!("{}  Renommer", icon::CURSOR_TEXT), "F2") {
+    if ops.rename && item(ui, !many, format!("{}  {}", icon::CURSOR_TEXT, tr!("Renommer")), "F2") {
         push(actions, OpsAction::StartRename(entry.name.clone()));
     }
-    if ops.permissions && item(ui, true, format!("{}  Permissions…", icon::LOCK_SIMPLE), "") {
+    if ops.permissions && item(ui, true, format!("{}  {}", icon::LOCK_SIMPLE, tr!("Permissions…")), "") {
         push(actions, OpsAction::AskPermissions);
     }
     let folders = if many { session.selected().any(Entry::is_dir) } else { entry.is_dir() };
-    if folders && item(ui, true, format!("{}  Calculer la taille", icon::CALCULATOR), "") {
+    if folders && item(ui, true, format!("{}  {}", icon::CALCULATOR, tr!("Calculer la taille")), "") {
         push(actions, OpsAction::ComputeSize);
     }
-    if item(ui, true, format!("{}  Propriétés", icon::INFO), "Alt+Entrée") {
+    if item(ui, true, format!("{}  {}", icon::INFO, tr!("Propriétés")), tr!("Alt+Entrée")) {
         push(actions, OpsAction::Properties);
     }
 }
@@ -272,7 +273,7 @@ pub fn bookmark_star(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut 
         (egui::FontId::proportional(17.0), if response.hovered() { p.text } else { p.muted })
     };
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon::STAR, font, color);
-    let tooltip = if marked { "Retirer des signets (Ctrl+D)" } else { "Ajouter aux signets (Ctrl+D)" };
+    let tooltip = if marked { tr!("Retirer des signets (Ctrl+D)") } else { tr!("Ajouter aux signets (Ctrl+D)") };
     if response.on_hover_text(tooltip).clicked() {
         push(actions, OpsAction::ToggleBookmark);
     }
@@ -288,17 +289,20 @@ pub fn toolbar(ui: &mut Ui, p: &Palette, session: &Session, compact: bool, actio
         }
     };
     let button = ui
-        .button(caption(icon::BOOKMARKS_SIMPLE, "Signets"))
-        .on_hover_text("Les dossiers gardés pour cette connexion");
+        .button(caption(icon::BOOKMARKS_SIMPLE, tr!("Signets")))
+        .on_hover_text(tr!("Les dossiers gardés pour cette connexion"));
     Popup::menu(&button).show(|ui| bookmarks_menu(ui, p, session, actions));
 
     if let Some(clipboard) = session.file_ops.clipboard.filter(|clipboard| clipboard.here)
         && session.writable()
     {
-        let what = if clipboard.cut { "Déplacer ici" } else { "Copier ici" };
-        let hover = format!("{what} {} (Ctrl+V)", format::count(clipboard.count, "élément", "éléments"));
+        let hover = if clipboard.cut {
+            trn!(clipboard.count, "Déplacer ici {n} élément (Ctrl+V)", "Déplacer ici {n} éléments (Ctrl+V)")
+        } else {
+            trn!(clipboard.count, "Copier ici {n} élément (Ctrl+V)", "Copier ici {n} éléments (Ctrl+V)")
+        };
         if ui
-            .button(caption(icon::CLIPBOARD, &format!("Coller ({})", clipboard.count)))
+            .button(caption(icon::CLIPBOARD, &tr!("Coller ({count})", count = clipboard.count)))
             .on_hover_text(hover)
             .clicked()
         {
@@ -313,8 +317,8 @@ fn bookmarks_menu(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec
     let bookmarks = &session.file_ops.bookmarks;
     if bookmarks.is_empty() {
         ui.add_space(4.0);
-        ui.label(muted(p, "Aucun signet pour cette connexion."));
-        ui.label(small(p, "L'étoile à côté du chemin, ou Ctrl+D, garde le dossier affiché."));
+        ui.label(muted(p, tr!("Aucun signet pour cette connexion.")));
+        ui.label(small(p, tr!("L'étoile à côté du chemin, ou Ctrl+D, garde le dossier affiché.")));
         ui.add_space(4.0);
     }
     let current = session.path.to_string();
@@ -344,11 +348,11 @@ fn bookmarks_menu(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec
                 push(actions, OpsAction::GoBookmark(index));
                 ui.close();
             }
-            if icon_button(ui, p, icon::PENCIL_SIMPLE, "Renommer le signet", true).clicked() {
+            if icon_button(ui, p, icon::PENCIL_SIMPLE, tr!("Renommer le signet"), true).clicked() {
                 push(actions, OpsAction::AskRenameBookmark(index));
                 ui.close();
             }
-            if icon_button(ui, p, icon::X, "Retirer le signet", true).clicked() {
+            if icon_button(ui, p, icon::X, tr!("Retirer le signet"), true).clicked() {
                 push(actions, OpsAction::RemoveBookmark(index));
                 ui.close();
             }
@@ -357,11 +361,11 @@ fn bookmarks_menu(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec
     ui.separator();
     let marked = bookmark_of(bookmarks, &session.path).is_some();
     let text = if marked {
-        format!("{}  Retirer ce dossier des signets", icon::STAR)
+        format!("{}  {}", icon::STAR, tr!("Retirer ce dossier des signets"))
     } else {
-        format!("{}  Ajouter ce dossier aux signets", icon::STAR)
+        format!("{}  {}", icon::STAR, tr!("Ajouter ce dossier aux signets"))
     };
-    if item(ui, session.known_path().is_some(), text, "Ctrl+D") {
+    if item(ui, session.known_path().is_some(), text, tr!("Ctrl+D")) {
         push(actions, OpsAction::ToggleBookmark);
     }
 }
@@ -412,10 +416,10 @@ impl Extra {
             ui.add(Label::new(RichText::new(text).size(12.5).color(p.muted)).selectable(false));
         };
         if self.permissions {
-            header.col(|ui| title(ui, "Permissions"));
+            header.col(|ui| title(ui, tr!("Permissions")));
         }
         if self.owner {
-            header.col(|ui| title(ui, "Propriétaire"));
+            header.col(|ui| title(ui, tr!("Propriétaire")));
         }
     }
 
@@ -466,16 +470,16 @@ fn columns_menu(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec<A
     let details = session.storage.operations().details;
     let asked = session.file_ops.columns;
     let mark = |on: bool| if on { icon::CHECK } else { "    " };
-    if item(ui, details, format!("{}  Permissions", mark(asked.permissions)), "") {
+    if item(ui, details, format!("{}  {}", mark(asked.permissions), tr!("Permissions")), "") {
         push(actions, OpsAction::ToggleColumn(ColumnKind::Permissions));
     }
-    if item(ui, details, format!("{}  Propriétaire", mark(asked.owner)), "") {
+    if item(ui, details, format!("{}  {}", mark(asked.owner), tr!("Propriétaire")), "") {
         push(actions, OpsAction::ToggleColumn(ColumnKind::Owner));
     }
     let note = if details {
-        "Masquées quand la vue est étroite."
+        tr!("Masquées quand la vue est étroite.")
     } else {
-        "Ce type de connexion n'a ni permissions ni propriétaire."
+        tr!("Ce type de connexion n'a ni permissions ni propriétaire.")
     };
     ui.label(small(p, note));
 }
@@ -495,8 +499,10 @@ pub fn status(ui: &mut Ui, p: &Palette, state: &OpsState, actions: &mut Vec<Acti
     }
     let label = match (jobs.as_slice(), sizes.as_slice()) {
         ([job], []) => format!("{} · {}", job.label, job_figures(job)),
-        ([], [((_, path), sizing)]) => format!("Taille de « {} » · {}", path.name(), size_figures(sizing.tally.snapshot())),
-        _ => format::count(jobs.len() + sizes.len(), "opération en cours", "opérations en cours"),
+        ([], [((_, path), sizing)]) => {
+            format!("{} · {}", tr!("Taille de « {name} »", name = path.name()), size_figures(sizing.tally.snapshot()))
+        }
+        _ => trn!(jobs.len() + sizes.len(), "{n} opération en cours", "{n} opérations en cours"),
     };
     let button = ui.add(Button::new(RichText::new(label).size(12.0).color(p.accent)).frame(false));
     ui.add(egui::Spinner::new().size(12.0).color(p.accent));
@@ -515,7 +521,7 @@ pub fn status(ui: &mut Ui, p: &Palette, state: &OpsState, actions: &mut Vec<Acti
             }
         }
         for ((key, path), sizing) in &sizes {
-            let label = format!("Taille de « {} »", path.name());
+            let label = tr!("Taille de « {name} »", name = path.name());
             if operation_row(ui, p, &label, &size_figures(sizing.tally.snapshot()), None) {
                 push(actions, OpsAction::CancelSize(*key, path.clone()));
             }
@@ -535,7 +541,7 @@ fn operation_row(ui: &mut Ui, p: &Palette, label: &str, figures: &str, fraction:
             let bar = ProgressBar::new(fraction.unwrap_or(0.0)).desired_height(4.0).fill(p.accent);
             ui.add(if fraction.is_none() { bar.animate(true) } else { bar });
         });
-        stop = icon_button(ui, p, icon::X, "Arrêter", true).clicked();
+        stop = icon_button(ui, p, icon::X, tr!("Arrêter"), true).clicked();
     });
     ui.add_space(4.0);
     stop
@@ -544,41 +550,42 @@ fn operation_row(ui: &mut Ui, p: &Palette, label: &str, figures: &str, fraction:
 fn job_figures(job: &crate::file_ops::Job) -> String {
     let (done, total) = job.progress.snapshot();
     let (items, count) = (job.done.load(Ordering::Relaxed), job.count.load(Ordering::Relaxed));
-    let mut text = if count > 1 { format!("{items} sur {count}") } else { String::new() };
+    let mut text = if count > 1 { tr!("{done} sur {total}", done = items, total = count) } else { String::new() };
     if total > 0 {
         if !text.is_empty() {
             text.push_str(" · ");
         }
-        text.push_str(&format!("{} sur {}", format::size(done), format::size(total)));
+        text.push_str(&tr!("{done} sur {total}", done = format::size(done), total = format::size(total)));
     }
-    if text.is_empty() { "en cours".to_owned() } else { text }
+    if text.is_empty() { tr!("en cours").to_owned() } else { text }
 }
 
 fn size_figures(size: FolderSize) -> String {
-    format!(
-        "{} · {}",
-        format::count(size.files as usize, "fichier", "fichiers"),
-        format::size(size.bytes)
-    )
+    format!("{} · {}", trn!(size.files, "{n} fichier", "{n} fichiers"), format::size(size.bytes))
 }
 
 /// A folder size for display: « 1 234 fichiers, 56 dossiers · 3,4 Go ».
 pub fn folder_summary(size: FolderSize) -> String {
     format!(
         "{}, {} · {}",
-        format::count(size.files as usize, "fichier", "fichiers"),
-        format::count(size.folders as usize, "dossier", "dossiers"),
+        trn!(size.files, "{n} fichier", "{n} fichiers"),
+        trn!(size.folders, "{n} dossier", "{n} dossiers"),
         format::size(size.bytes)
     )
 }
 
-/// `12345678` → `12 345 678`.
+/// `12345678` → `12 345 678`, with the separator of the language in use.
 fn digits(value: u64) -> String {
+    let separator = match crate::i18n::current() {
+        crate::i18n::Lang::Fr => ' ',
+        crate::i18n::Lang::En => ',',
+        crate::i18n::Lang::De | crate::i18n::Lang::Es => '.',
+    };
     let text = value.to_string();
     let mut grouped = String::new();
     for (index, c) in text.chars().enumerate() {
         if index > 0 && (text.len() - index).is_multiple_of(3) {
-            grouped.push(' ');
+            grouped.push(separator);
         }
         grouped.push(c);
     }
@@ -621,7 +628,7 @@ impl MoveForm {
             return Err(why);
         }
         if !self.copy && dest == self.from {
-            return Err("Les éléments sont déjà dans ce dossier.".to_owned());
+            return Err(tr!("Les éléments sont déjà dans ce dossier.").to_owned());
         }
         Ok(dest)
     }
@@ -717,15 +724,17 @@ impl PermissionsForm {
         }
         let empty = Accounts::default();
         let accounts = self.accounts.as_deref().unwrap_or(&empty);
-        let pick = |typed: &str, initial: &str, find: &dyn Fn(&str) -> Option<u32>, what: &str| {
+        let pick = |typed: &str, initial: &str, find: &dyn Fn(&str) -> Option<u32>, unknown: fn(&str) -> String| {
             let typed = typed.trim();
             if typed.is_empty() || typed == initial.trim() {
                 return Ok(None);
             }
-            find(typed).map(Some).ok_or_else(|| format!("{what} « {typed} » inconnu du serveur : indiquez son numéro."))
+            find(typed).map(Some).ok_or_else(|| unknown(typed))
         };
-        let uid = pick(&self.owner, &self.initial_owner, &|text| accounts.user_id(text), "Utilisateur")?;
-        let gid = pick(&self.group, &self.initial_group, &|text| accounts.group_id(text), "Groupe")?;
+        let unknown_user = |name: &str| tr!("Utilisateur « {name} » inconnu du serveur : indiquez son numéro.", name);
+        let unknown_group = |name: &str| tr!("Groupe « {name} » inconnu du serveur : indiquez son numéro.", name);
+        let uid = pick(&self.owner, &self.initial_owner, &|text| accounts.user_id(text), unknown_user)?;
+        let gid = pick(&self.group, &self.initial_group, &|text| accounts.group_id(text), unknown_group)?;
         Ok((uid.is_some() || gid.is_some()).then_some((uid, gid)))
     }
 
@@ -791,18 +800,24 @@ fn buttons(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 
 fn move_form(ui: &mut Ui, p: &Palette, form: &mut MoveForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH + 40.0);
-    let verb = if form.copy { "Copier" } else { "Déplacer" };
-    title(ui, p, &format!("{verb} {}", describe(&form.items)));
-    ui.label(small(p, format!("{}  Depuis {}", icon::FOLDER, form.from)));
+    let verb = if form.copy { tr!("Copier") } else { tr!("Déplacer") };
+    let heading = match (&form.items[..], form.copy) {
+        ([only], true) => tr!("Copier « {name} »", name = only.path.name()),
+        ([only], false) => tr!("Déplacer « {name} »", name = only.path.name()),
+        (many, true) => tr!("Copier {count} éléments", count = many.len()),
+        (many, false) => tr!("Déplacer {count} éléments", count = many.len()),
+    };
+    title(ui, p, &heading);
+    ui.label(small(p, format!("{}  {}", icon::FOLDER, tr!("Depuis {path}", path = form.from))));
     ui.add_space(8.0);
 
-    ui.label(small(p, "Dossier de destination"));
+    ui.label(small(p, tr!("Dossier de destination")));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         let width = FIELD_WIDTH + 40.0 - if form.places.is_empty() { 0.0 } else { 32.0 };
         let field = ui.add(
             TextEdit::singleline(&mut form.path)
-                .hint_text("/chemin/du/dossier, ou relatif à celui-ci")
+                .hint_text(tr!("/chemin/du/dossier, ou relatif à celui-ci"))
                 .desired_width(width)
                 .margin(Margin::symmetric(10, 7)),
         );
@@ -810,7 +825,7 @@ fn move_form(ui: &mut Ui, p: &Palette, form: &mut MoveForm, first_frame: bool, o
             field.request_focus();
         }
         if !form.places.is_empty() {
-            let pick = icon_button(ui, p, icon::CARET_DOWN, "Dossier parent et signets", true);
+            let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Dossier parent et signets"), true);
             Popup::menu(&pick).show(|ui| {
                 ui.set_min_width(240.0);
                 for (label, path) in &form.places {
@@ -832,13 +847,14 @@ fn move_form(ui: &mut Ui, p: &Palette, form: &mut MoveForm, first_frame: bool, o
     let untouched = resolve_path(&form.from, &form.path) == form.from;
     match &destination {
         Err(_) if untouched && !form.copy => {
-            ui.label(small(p, "Tapez le dossier de destination, ou choisissez-le dans la liste."));
+            ui.label(small(p, tr!("Tapez le dossier de destination, ou choisissez-le dans la liste.")));
         }
         Err(why) if !why.is_empty() => {
             ui.label(RichText::new(why).size(12.0).color(p.danger));
         }
         Ok(dest) => {
-            ui.label(small(p, format!("{}  Vers {dest} — créé s'il n'existe pas", icon::ARROW_BEND_DOWN_RIGHT)));
+            let text = tr!("Vers {dest} — créé s'il n'existe pas", dest);
+            ui.label(small(p, format!("{}  {}", icon::ARROW_BEND_DOWN_RIGHT, text)));
         }
         Err(_) => {}
     }
@@ -850,7 +866,7 @@ fn move_form(ui: &mut Ui, p: &Palette, form: &mut MoveForm, first_frame: bool, o
         if primary_button(ui, p, verb, valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -858,23 +874,30 @@ fn move_form(ui: &mut Ui, p: &Palette, form: &mut MoveForm, first_frame: bool, o
 
 fn clash_form(ui: &mut Ui, p: &Palette, form: &mut ClashForm, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH + 40.0);
-    let dest = if form.plan.dest.is_root() {
-        "la racine".to_owned()
-    } else {
-        format!("« {} »", form.plan.dest.name())
-    };
+    let (root, folder) = (form.plan.dest.is_root(), form.plan.dest.name());
     let (heading, body) = match form.clashes.as_slice() {
-        [(name, _)] if form.plan.rename_to.is_some() => ("Remplacer ?".to_owned(), format!("« {name} » existe déjà dans ce dossier.")),
-        [(name, _)] => ("Remplacer ?".to_owned(), format!("« {name} » existe déjà dans {dest}.")),
+        [(name, _)] => {
+            let body = if form.plan.rename_to.is_some() {
+                tr!("« {name} » existe déjà dans ce dossier.", name)
+            } else if root {
+                tr!("« {name} » existe déjà dans la racine.", name)
+            } else {
+                tr!("« {name} » existe déjà dans « {folder} ».", name, folder)
+            };
+            (tr!("Remplacer ?").to_owned(), body)
+        }
         many => {
-            let mut names: Vec<String> = many.iter().take(4).map(|(name, _)| format!("« {name} »")).collect();
+            let mut names: Vec<String> = many.iter().take(4).map(|(name, _)| tr!("« {name} »", name)).collect();
             if many.len() > 4 {
-                names.push(format!("et {} autres", many.len() - 4));
+                names.push(trn!(many.len() - 4, "et {n} autres", "et {n} autres"));
             }
-            (
-                format!("{} existent déjà", format::count(many.len(), "élément", "éléments")),
-                format!("Dans {dest} : {}.", names.join(", ")),
-            )
+            let names = names.join(", ");
+            let body = if root {
+                tr!("Dans la racine : {names}.", names)
+            } else {
+                tr!("Dans « {folder} » : {names}.", folder, names)
+            };
+            (tr!("{count} éléments existent déjà", count = many.len()), body)
         }
     };
     title(ui, p, &heading);
@@ -883,7 +906,7 @@ fn clash_form(ui: &mut Ui, p: &Palette, form: &mut ClashForm, outcome: &mut Outc
         ui.add_space(6.0);
         ui.add(
             Label::new(
-                RichText::new("Un dossier remplacé est d'abord supprimé avec tout son contenu.")
+                RichText::new(tr!("Un dossier remplacé est d'abord supprimé avec tout son contenu."))
                     .size(12.0)
                     .color(p.danger),
             )
@@ -891,17 +914,17 @@ fn clash_form(ui: &mut Ui, p: &Palette, form: &mut ClashForm, outcome: &mut Outc
         );
     }
     buttons(ui, |ui| {
-        if danger_button(ui, p, "Remplacer").clicked() {
+        if danger_button(ui, p, tr!("Remplacer")).clicked() {
             form.choice = Existing::Replace;
             *outcome = Outcome::Confirmed;
         }
         let all = form.clashes.len() >= form.plan.items.len();
-        let skip = if all { "Ne rien remplacer" } else { "Ignorer ceux-là" };
+        let skip = if all { tr!("Ne rien remplacer") } else { tr!("Ignorer ceux-là") };
         if ui.button(skip).clicked() {
             form.choice = Existing::Skip;
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -909,22 +932,22 @@ fn clash_form(ui: &mut Ui, p: &Palette, form: &mut ClashForm, outcome: &mut Outc
 
 fn permissions_form(ui: &mut Ui, p: &Palette, form: &mut PermissionsForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH + 40.0);
-    title(ui, p, &format!("Permissions de {}", describe(&form.items)));
+    title(ui, p, &permissions_label(&form.items));
     if form.mixed && form.items.len() > 1 {
-        ui.label(small(p, "Leurs permissions diffèrent : celles du premier servent de point de départ."));
+        ui.label(small(p, tr!("Leurs permissions diffèrent : celles du premier servent de point de départ.")));
         ui.add_space(4.0);
     }
 
-    const WHO: [(&str, u32); 3] = [("Propriétaire", 6), ("Groupe", 3), ("Autres", 0)];
-    const WHAT: [(&str, u32); 3] = [("Lecture", 0o4), ("Écriture", 0o2), ("Exécution", 0o1)];
+    const WHO: [(&str, u32); 3] = [(tr_key!("Propriétaire"), 6), (tr_key!("Groupe"), 3), (tr_key!("Autres"), 0)];
+    const WHAT: [(&str, u32); 3] = [(tr_key!("Lecture"), 0o4), (tr_key!("Écriture"), 0o2), (tr_key!("Exécution"), 0o1)];
     Grid::new("permissions-grid").spacing(vec2(26.0, 8.0)).show(ui, |ui| {
         ui.label("");
         for (what, _) in WHAT {
-            ui.label(small(p, what));
+            ui.label(small(p, crate::i18n::lookup(what)));
         }
         ui.end_row();
         for (who, shift) in WHO {
-            ui.label(RichText::new(who).color(p.text));
+            ui.label(RichText::new(crate::i18n::lookup(who)).color(p.text));
             for (_, bit) in WHAT {
                 let bit = bit << shift;
                 let mut on = form.mode & bit != 0;
@@ -937,7 +960,7 @@ fn permissions_form(ui: &mut Ui, p: &Palette, form: &mut PermissionsForm, first_
     });
     ui.add_space(10.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Valeur octale").color(p.text));
+        ui.label(RichText::new(tr!("Valeur octale")).color(p.text));
         let field = ui.add(
             TextEdit::singleline(&mut form.octal)
                 .desired_width(56.0)
@@ -951,22 +974,22 @@ fn permissions_form(ui: &mut Ui, p: &Palette, form: &mut PermissionsForm, first_
             form.typed();
         }
         let valid = parse_octal(&form.octal).is_some();
-        let shown = if valid { mode_text(form.mode) } else { "trois ou quatre chiffres de 0 à 7".to_owned() };
+        let shown = if valid { mode_text(form.mode) } else { tr!("trois ou quatre chiffres de 0 à 7").to_owned() };
         ui.label(RichText::new(shown).color(if valid { p.muted } else { p.danger }));
     });
 
     if form.has_folders() {
         ui.add_space(10.0);
-        checkbox(ui, p, &mut form.recursive, "Appliquer aussi à leur contenu");
+        checkbox(ui, p, &mut form.recursive, tr!("Appliquer aussi à leur contenu"));
         if form.recursive {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for (scope, label) in [
-                    (Scope::All, "Fichiers et dossiers"),
-                    (Scope::Files, "Fichiers seulement"),
-                    (Scope::Folders, "Dossiers seulement"),
+                    (Scope::All, tr!("Fichiers et dossiers")),
+                    (Scope::Files, tr!("Fichiers seulement")),
+                    (Scope::Folders, tr!("Dossiers seulement")),
                 ] {
                     let selected = form.scope == scope;
                     let text = RichText::new(label).size(12.5).color(if selected { p.on_accent } else { p.text });
@@ -988,10 +1011,11 @@ fn permissions_form(ui: &mut Ui, p: &Palette, form: &mut PermissionsForm, first_
         ui.add_space(4.0);
         ui.horizontal_top(|ui| {
             let half = (FIELD_WIDTH + 40.0 - ui.spacing().item_spacing.x) / 2.0;
-            owner_field(ui, p, "Propriétaire", &mut form.owner, form.accounts.as_deref().map(|a| &a.users), half);
-            owner_field(ui, p, "Groupe", &mut form.group, form.accounts.as_deref().map(|a| &a.groups), half);
+            owner_field(ui, p, tr!("Propriétaire"), &mut form.owner, form.accounts.as_deref().map(|a| &a.users), half);
+            owner_field(ui, p, tr!("Groupe"), &mut form.group, form.accounts.as_deref().map(|a| &a.groups), half);
         });
-        ui.label(small(p, "Un nom ou un numéro. Changer de propriétaire demande en général d'être administrateur."));
+        let hint = tr!("Un nom ou un numéro. Changer de propriétaire demande en général d'être administrateur.");
+        ui.label(small(p, hint));
     }
 
     let owner = form.owner_change();
@@ -1005,10 +1029,10 @@ fn permissions_form(ui: &mut Ui, p: &Palette, form: &mut PermissionsForm, first_
     }
     let valid = parse_octal(&form.octal).is_some() && owner.is_ok() && form.changes();
     buttons(ui, |ui| {
-        if primary_button(ui, p, "Appliquer", valid).clicked() {
+        if primary_button(ui, p, tr!("Appliquer"), valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -1035,7 +1059,7 @@ fn owner_field(
                     .margin(Margin::symmetric(10, 7)),
             );
             if let Some(known) = known.filter(|_| picking) {
-                let pick = icon_button(ui, p, icon::CARET_DOWN, "Choisir parmi ceux du serveur", true);
+                let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Choisir parmi ceux du serveur"), true);
                 Popup::menu(&pick).show(|ui| {
                     ui.set_min_width(180.0);
                     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
@@ -1085,22 +1109,23 @@ fn properties(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, outcome: &mut
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(13.0).color(p.muted));
-                    ui.label(small(p, "Lecture des détails sur le serveur…"));
+                    ui.label(small(p, tr!("Lecture des détails sur le serveur…")));
                 });
             }
             Some(Err(error)) => {
                 ui.add_space(6.0);
-                ui.add(Label::new(RichText::new(format!("Détails indisponibles : {error}")).size(12.0).color(p.danger)).wrap());
+                let text = tr!("Détails indisponibles : {error}", error);
+                ui.add(Label::new(RichText::new(text).size(12.0).color(p.danger)).wrap());
             }
             Some(Ok(_)) => {}
         }
     }
 
     buttons(ui, |ui| {
-        if primary_button(ui, p, "Fermer", true).clicked() {
+        if primary_button(ui, p, tr!("Fermer"), true).clicked() {
             *outcome = Outcome::Cancelled;
         }
-        if view.operations.permissions && ui.button(format!("{}  Permissions…", icon::LOCK_SIMPLE)).clicked() {
+        if view.operations.permissions && ui.button(format!("{}  {}", icon::LOCK_SIMPLE, tr!("Permissions…"))).clicked() {
             view.wants_permissions = true;
         }
     });
@@ -1122,39 +1147,39 @@ fn single_rows(ui: &mut Ui, p: &Palette, view: &mut PropertiesView) {
     let link = loaded.link.clone().or_else(|| entry.link.clone());
 
     let kind = match (entry.kind, &link) {
-        (EntryKind::Bucket, _) => "Bucket",
-        (EntryKind::Folder, Some(_)) => "Lien vers un dossier",
-        (EntryKind::Folder, None) => "Dossier",
-        (EntryKind::File, Some(_)) => "Lien vers un fichier",
-        (EntryKind::File, None) => "Fichier",
+        (EntryKind::Bucket, _) => tr!("Bucket"),
+        (EntryKind::Folder, Some(_)) => tr!("Lien vers un dossier"),
+        (EntryKind::Folder, None) => tr!("Dossier"),
+        (EntryKind::File, Some(_)) => tr!("Lien vers un fichier"),
+        (EntryKind::File, None) => tr!("Fichier"),
     };
-    row(ui, p, "Type", kind);
-    ui.label(RichText::new("Emplacement").color(p.muted));
+    row(ui, p, tr!("Type"), kind);
+    ui.label(RichText::new(tr!("Emplacement")).color(p.muted));
     ui.horizontal(|ui| {
         ui.add(Label::new(RichText::new(item.path.to_string()).color(p.text)).wrap());
-        if icon_button(ui, p, icon::COPY_SIMPLE, "Copier le chemin", true).clicked() {
+        if icon_button(ui, p, icon::COPY_SIMPLE, tr!("Copier le chemin"), true).clicked() {
             ui.ctx().copy_text(item.path.to_string());
         }
     });
     ui.end_row();
     if let Some(target) = &link {
-        row(ui, p, "Cible du lien", target);
+        row(ui, p, tr!("Cible du lien"), target);
     }
-    row(ui, p, "Connexion", &view.connection);
+    row(ui, p, tr!("Connexion"), &view.connection);
 
     if !item.is_dir {
         if let Some(size) = loaded.size.or(entry.size) {
-            row(ui, p, "Taille", format!("{} ({} octets)", format::size(size), digits(size)));
+            row(ui, p, tr!("Taille"), tr!("{size} ({bytes} octets)", size = format::size(size), bytes = digits(size)));
         }
     } else if entry.kind != EntryKind::Bucket {
         folder_size_row(ui, p, view, 0);
     }
     if let Some(modified) = loaded.modified.or(entry.modified) {
-        let label = if entry.kind == EntryKind::Bucket { "Créé" } else { "Modifié" };
+        let label = if entry.kind == EntryKind::Bucket { tr!("Créé") } else { tr!("Modifié") };
         row(ui, p, label, format::date(modified));
     }
     if let Some(mode) = loaded.permissions.or(entry.permissions) {
-        row(ui, p, "Permissions", format!("{}   ({})", mode_text(mode), octal_text(mode)));
+        row(ui, p, tr!("Permissions"), format!("{}   ({})", mode_text(mode), octal_text(mode)));
     }
     let named = |name: Option<String>, id: Option<u32>| match (name, id) {
         (Some(name), Some(id)) if name != id.to_string() => Some(format!("{name} ({id})")),
@@ -1163,29 +1188,29 @@ fn single_rows(ui: &mut Ui, p: &Palette, view: &mut PropertiesView) {
         (None, None) => None,
     };
     if let Some(owner) = named(loaded.owner.clone().or(entry.owner.clone()), loaded.uid) {
-        row(ui, p, "Propriétaire", owner);
+        row(ui, p, tr!("Propriétaire"), owner);
     }
     if let Some(group) = named(loaded.group.clone().or(entry.group.clone()), loaded.gid) {
-        row(ui, p, "Groupe", group);
+        row(ui, p, tr!("Groupe"), group);
     }
     for (label, value) in &loaded.details {
         row(ui, p, label, value);
     }
     if !loaded.metadata.is_empty() {
-        ui.label(RichText::new("Métadonnées").color(p.muted));
+        ui.label(RichText::new(tr!("Métadonnées")).color(p.muted));
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             for (key, value) in &loaded.metadata {
-                ui.add(Label::new(RichText::new(format!("{key} : {value}")).color(p.text)).wrap());
+                ui.add(Label::new(RichText::new(tr!("{key} : {value}", key, value)).color(p.text)).wrap());
             }
         });
         ui.end_row();
     }
     if let Some(url) = &view.url {
-        ui.label(RichText::new("Adresse").color(p.muted));
+        ui.label(RichText::new(tr!("Adresse")).color(p.muted));
         ui.horizontal(|ui| {
             ui.add(Label::new(RichText::new(url).size(12.0).color(p.text)).wrap());
-            if icon_button(ui, p, icon::COPY_SIMPLE, "Copier l'adresse", true).clicked() {
+            if icon_button(ui, p, icon::COPY_SIMPLE, tr!("Copier l'adresse"), true).clicked() {
                 ui.ctx().copy_text(url.clone());
             }
         });
@@ -1197,22 +1222,23 @@ fn many_rows(ui: &mut Ui, p: &Palette, view: &mut PropertiesView) {
     let folders = view.items.iter().filter(|item| item.is_dir).count();
     let files = view.items.len() - folders;
     let what = match (files, folders) {
-        (_, 0) => format::count(files, "fichier", "fichiers"),
-        (0, _) => format::count(folders, "dossier", "dossiers"),
-        _ => format!(
-            "{} et {}",
-            format::count(files, "fichier", "fichiers"),
-            format::count(folders, "dossier", "dossiers")
+        (_, 0) => trn!(files, "{n} fichier", "{n} fichiers"),
+        (0, _) => trn!(folders, "{n} dossier", "{n} dossiers"),
+        _ => tr!(
+            "{files} et {folders}",
+            files = trn!(files, "{n} fichier", "{n} fichiers"),
+            folders = trn!(folders, "{n} dossier", "{n} dossiers")
         ),
     };
-    row(ui, p, "Sélection", what);
+    row(ui, p, tr!("Sélection"), what);
     if let Some(parent) = view.items[0].path.parent() {
-        row(ui, p, "Emplacement", parent.to_string());
+        row(ui, p, tr!("Emplacement"), parent.to_string());
     }
-    row(ui, p, "Connexion", &view.connection);
+    row(ui, p, tr!("Connexion"), &view.connection);
     if files > 0 {
         let bytes: u64 = view.items.iter().filter(|item| !item.is_dir).map(|item| item.size).sum();
-        row(ui, p, "Taille des fichiers", format!("{} ({} octets)", format::size(bytes), digits(bytes)));
+        let size = tr!("{size} ({bytes} octets)", size = format::size(bytes), bytes = digits(bytes));
+        row(ui, p, tr!("Taille des fichiers"), size);
     }
     if folders > 0 {
         folder_size_row(ui, p, view, files as u64);
@@ -1222,12 +1248,12 @@ fn many_rows(ui: &mut Ui, p: &Palette, view: &mut PropertiesView) {
 /// What the folders hold, with the count to start or stop. `extra_files`
 /// are files of the selection beyond the folders, added to the totals.
 fn folder_size_row(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, extra_files: u64) {
-    ui.label(RichText::new("Contenu").color(p.muted));
+    ui.label(RichText::new(tr!("Contenu")).color(p.muted));
     let counted: Vec<&Arc<Sizing>> = view.sizes.iter().flatten().collect();
     let folders = view.items.iter().filter(|item| item.is_dir).count();
     ui.horizontal(|ui| {
         if counted.len() < folders || counted.iter().any(|sizing| sizing.failed()) {
-            if ui.button(format!("{}  Calculer la taille", icon::CALCULATOR)).clicked() {
+            if ui.button(format!("{}  {}", icon::CALCULATOR, tr!("Calculer la taille"))).clicked() {
                 view.wants_size = true;
             }
             if let Some(error) = counted.iter().find_map(|sizing| sizing.error.lock().ok().and_then(|e| e.clone())) {
@@ -1249,7 +1275,7 @@ fn folder_size_row(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, extra_fi
         ui.label(RichText::new(folder_summary(total)).color(p.text));
         if counted.iter().any(|sizing| sizing.is_running()) {
             ui.add(egui::Spinner::new().size(13.0).color(p.muted));
-            if ui.small_button("Arrêter").clicked() {
+            if ui.small_button(tr!("Arrêter")).clicked() {
                 view.stop_size = true;
             }
         }
@@ -1259,8 +1285,8 @@ fn folder_size_row(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, extra_fi
 
 fn rename_bookmark(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH);
-    title(ui, p, "Renommer le signet");
-    ui.label(small(p, "Nom du signet"));
+    title(ui, p, tr!("Renommer le signet"));
+    ui.label(small(p, tr!("Nom du signet")));
     let field = ui.add(
         TextEdit::singleline(name)
             .desired_width(FIELD_WIDTH)
@@ -1274,10 +1300,10 @@ fn rename_bookmark(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: boo
         *outcome = Outcome::Confirmed;
     }
     buttons(ui, |ui| {
-        if primary_button(ui, p, "Renommer", valid).clicked() {
+        if primary_button(ui, p, tr!("Renommer"), valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

@@ -186,7 +186,7 @@ pub fn parse_date(text: &str) -> Result<Option<i64>, ()> {
 
 /// The start of the day `days` days before today, as the date field shows it.
 pub fn days_ago(days: i64) -> String {
-    (Local::now() - chrono::Duration::days(days)).format("%d/%m/%Y").to_string()
+    (Local::now() - chrono::Duration::days(days)).format(crate::format::day_pattern()).to_string()
 }
 
 /// A find: an entry and the folder it is in, relative to the one searched
@@ -407,15 +407,17 @@ impl Search {
     /// The form, read; `Err` says which field is wrong.
     pub fn criteria(&self) -> Result<Criteria, String> {
         let size = |text: &str, what: &str| {
-            parse_size(text).map_err(|()| format!("{what} : « {} » n'est pas une taille (ex. 10 Mo)", text.trim()))
+            parse_size(text).map_err(|()| {
+                tr!("{what} : « {text} » n'est pas une taille (ex. 10 Mo)", what, text = text.trim())
+            })
         };
         Ok(Criteria {
             pattern: self.pattern.trim().to_owned(),
             kinds: self.kinds,
-            min_size: size(&self.min_size, "Taille minimale")?,
-            max_size: size(&self.max_size, "Taille maximale")?,
+            min_size: size(&self.min_size, tr!("Taille minimale"))?,
+            max_size: size(&self.max_size, tr!("Taille maximale"))?,
             modified_after: parse_date(&self.after)
-                .map_err(|()| format!("« {} » n'est pas une date (JJ/MM/AAAA)", self.after.trim()))?,
+                .map_err(|()| tr!("« {text} » n'est pas une date (JJ/MM/AAAA)", text = self.after.trim()))?,
         })
     }
 

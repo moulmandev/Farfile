@@ -27,7 +27,7 @@ pub fn is_local(id: &str) -> bool {
 pub fn entry(id: &str) -> Option<Profile> {
     let spec = if id == ID { "" } else { id.strip_prefix(SHELL_PREFIX)? };
     let name = if spec.is_empty() {
-        TITLE.to_owned()
+        crate::i18n::lookup(TITLE).to_owned()
     } else {
         Shell::from_spec(spec)?.label
     };
@@ -58,15 +58,15 @@ pub fn with_entries(profiles: &[Profile]) -> Vec<Profile> {
 /// The name a tab's file browser starts its path with: whatever the tab is
 /// called, on this computer the files are those of "Cet ordinateur".
 pub fn files_title(profile: &Profile, title: String) -> String {
-    if profile.protocol == Protocol::Local { TITLE.to_owned() } else { title }
+    if profile.protocol == Protocol::Local { crate::i18n::lookup(TITLE).to_owned() } else { title }
 }
 
 /// What an entry is, under its name.
 pub fn summary(spec: &str) -> &'static str {
     match spec {
-        "" => "Disques et dossiers de ce PC",
-        spec if spec.starts_with("wsl:") => "Linux (WSL) · terminal local",
-        _ => "Terminal local",
+        "" => tr!("Disques et dossiers de ce PC"),
+        spec if spec.starts_with("wsl:") => tr!("Linux (WSL) · terminal local"),
+        _ => tr!("Terminal local"),
     }
 }
 

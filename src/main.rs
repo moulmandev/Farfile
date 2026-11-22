@@ -1,6 +1,9 @@
 // No console window next to the app in release builds on Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// First: its macros (`tr!`, `trn!`) serve every module after it.
+#[macro_use]
+mod i18n;
 mod app;
 mod copy;
 mod dev;
@@ -12,6 +15,7 @@ mod hosts;
 mod import;
 mod launch;
 mod local;
+mod monitor;
 mod os_drag;
 mod profiles;
 mod s3;
@@ -51,6 +55,11 @@ fn main() -> eframe::Result {
             return Ok(());
         }
         _ => {}
+    }
+
+    // Already running, hidden in the notification area: show that one.
+    if !dev::active() && monitor::notify::show_hidden_copy() {
+        return Ok(());
     }
 
     let mut viewport = egui::ViewportBuilder::default()

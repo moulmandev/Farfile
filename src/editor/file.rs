@@ -44,7 +44,7 @@ impl Stamp {
 pub async fn stat(storage: &Arc<dyn Storage>, path: &RemotePath) -> Result<Stamp> {
     if let Some(local) = storage.local() {
         let real = local.resolve(path)?;
-        let meta = tokio::fs::metadata(&real).await.with_context(|| format!("{} introuvable", real.display()))?;
+        let meta = tokio::fs::metadata(&real).await.with_context(|| tr!("{path} introuvable", path = real.display()))?;
         let modified = meta
             .modified()
             .ok()
@@ -67,7 +67,7 @@ pub async fn stat(storage: &Arc<dyn Storage>, path: &RemotePath) -> Result<Stamp
         }
         cursor = page.next;
         if cursor.is_none() {
-            bail!("« {} » n'existe plus", path.name());
+            bail!(tr!("« {name} » n'existe plus", name = path.name()));
         }
     }
 }
@@ -127,7 +127,7 @@ pub async fn open(storage: Arc<dyn Storage>, path: RemotePath, limit: u64, force
     if let Some(size) = stamp.and_then(|stamp| stamp.size)
         && size > limit
     {
-        bail!("le fichier est trop gros pour l'éditeur ({})", crate::format::size(size));
+        bail!(tr!("le fichier est trop gros pour l'éditeur ({size})", size = crate::format::size(size)));
     }
     let bytes = read(&storage, &path).await?;
     let name = path.name().to_owned();
@@ -151,17 +151,17 @@ pub async fn open(storage: Arc<dyn Storage>, path: RemotePath, limit: u64, force
         Opened { decoded, size, stamp, language, indent }
     })
     .await
-    .context("lecture interrompue")
+    .context(tr!("lecture interrompue"))
 }
 
 async fn read(storage: &Arc<dyn Storage>, path: &RemotePath) -> Result<Vec<u8>> {
     if let Some(local) = storage.local() {
         let real = local.resolve(path)?;
-        return tokio::fs::read(&real).await.with_context(|| format!("impossible de lire {}", real.display()));
+        return tokio::fs::read(&real).await.with_context(|| tr!("impossible de lire {path}", path = real.display()));
     }
     let copy = TempCopy::of(path.name());
     storage.download(path, &copy.0, &Progress::default()).await?;
-    let bytes = tokio::fs::read(&copy.0).await.context("copie locale illisible")?;
+    let bytes = tokio::fs::read(&copy.0).await.context(tr!("copie locale illisible"))?;
     Ok(bytes)
 }
 
@@ -205,9 +205,9 @@ async fn write(storage: &Arc<dyn Storage>, path: &RemotePath, bytes: &[u8]) -> R
     }
     let copy = TempCopy::of(path.name());
     if let Some(folder) = copy.0.parent() {
-        tokio::fs::create_dir_all(folder).await.context("dossier temporaire impossible à créer")?;
+        tokio::fs::create_dir_all(folder).await.context(tr!("dossier temporaire impossible à créer"))?;
     }
-    tokio::fs::write(&copy.0, bytes).await.context("copie locale impossible à écrire")?;
+    tokio::fs::write(&copy.0, bytes).await.context(tr!("copie locale impossible à écrire"))?;
     // Never `upload`: on failure it removes what it half wrote, which here
     // would be the user's file.
     storage.replace(&copy.0, path).await
@@ -218,7 +218,7 @@ async fn write(storage: &Arc<dyn Storage>, path: &RemotePath, bytes: &[u8]) -> R
 async fn write_in_place(real: &Path, bytes: &[u8]) -> Result<()> {
     tokio::fs::write(real, bytes)
         .await
-        .with_context(|| format!("impossible d'écrire {}", real.display()))
+        .with_context(|| tr!("impossible d'écrire {path}", path = real.display()))
 }
 
 /// A job whose result is picked up by the screen on a later frame. Unlike

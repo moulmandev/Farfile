@@ -37,7 +37,7 @@ impl Identity {
 
     pub fn title(&self) -> &str {
         match (self.name.trim(), self.user.trim()) {
-            ("", "") => "Identité sans nom",
+            ("", "") => tr!("Identité sans nom"),
             ("", user) => user,
             (name, _) => name,
         }
@@ -56,13 +56,13 @@ impl Identity {
         }
         if let Some(key) = self.key() {
             let name = key.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-            parts.push(format!("clé {name}"));
+            parts.push(tr!("clé {name}", name));
         }
         if self.has_password {
-            parts.push("mot de passe".to_owned());
+            parts.push(tr!("mot de passe").to_owned());
         }
         if parts.is_empty() {
-            "vide".to_owned()
+            tr!("vide").to_owned()
         } else {
             parts.join(" · ")
         }
@@ -97,7 +97,7 @@ pub fn save(identities: &[Identity]) -> Result<()> {
     if crate::dev::active() {
         return Ok(());
     }
-    let path = config_file().context("dossier de configuration introuvable")?;
+    let path = config_file().context(tr!("dossier de configuration introuvable"))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

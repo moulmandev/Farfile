@@ -11,7 +11,6 @@ use zeroize::Zeroizing;
 
 use super::{App, ClosedTab, is_dev};
 use crate::dev;
-use crate::format;
 use crate::hosts::restore::{self, SavedTab, SavedTabs};
 use crate::hosts::vault::{self, Bundle, KdfParams, KeyFile, MAX_KEY_FILE};
 use crate::hosts::{self, HostColor};
@@ -53,14 +52,18 @@ impl App {
         let tabs = kept
             .iter()
             .map(|tab| {
+                // This computer and its shells are named in the language in
+                // use: a title of their own is only one given by hand.
                 let named = self
                     .profiles
                     .iter()
                     .find(|profile| profile.id == tab.profile_id)
-                    .map(Profile::title);
+                    .map(|profile| profile.title().to_owned())
+                    .or_else(|| crate::local::entry(&tab.profile_id).map(|entry| entry.title().to_owned()))
+                    .or_else(|| crate::monitor::is_dashboard(&tab.profile_id).then(|| tr!("Surveillance").to_owned()));
                 SavedTab {
                     profile: tab.profile_id.clone(),
-                    title: (named != Some(tab.title.as_str())).then(|| tab.title.clone()),
+                    title: (named.as_deref() != Some(tab.title.as_str())).then(|| tab.title.clone()),
                     path: tab.session.known_path().map(|path| path.to_string()),
                     panes: tab.panes,
                     right: tab.side == Side::Right,
@@ -123,7 +126,7 @@ impl App {
         };
         self.hosts.written = Some(saved.clone());
         // A connection deleted since is skipped without a word.
-        let saved = saved.keep(|id| self.profiles.iter().any(|profile| profile.id == id));
+        let saved = saved.keep(|id| self.profiles.iter().any(|profile| profile.id == id) || crate::monitor::is_dashboard(id));
         if saved.tabs.is_empty() {
             return;
         }
@@ -140,6 +143,8 @@ impl App {
                     .iter()
                     .find(|profile| profile.id == saved_tab.profile)
                     .map(|profile| profile.title().to_owned())
+                    .or_else(|| crate::local::entry(&saved_tab.profile).map(|entry| entry.title().to_owned()))
+                    .or_else(|| crate::monitor::is_dashboard(&saved_tab.profile).then(|| tr!("Surveillance").to_owned()))
                     .unwrap_or_default(),
             };
             let like = ClosedTab {
@@ -189,11 +194,21 @@ impl App {
                 }
                 let saved = self.persist_profiles();
                 if saved.is_ok() {
-                    let what = format::count(count, "connexion", "connexions");
                     let folder = profiles::folder_name(&path);
                     let text = match color {
-                        Some(color) => format!("{what} de « {folder} » en {}", color.label().to_lowercase()),
-                        None => format!("{what} de « {folder} » sans couleur"),
+                        Some(color) => trn!(
+                            count,
+                            "{n} connexion de « {folder} » en {color}",
+                            "{n} connexions de « {folder} » en {color}",
+                            folder,
+                            color = color.label().to_lowercase()
+                        ),
+                        None => trn!(
+                            count,
+                            "{n} connexion de « {folder} » sans couleur",
+                            "{n} connexions de « {folder} » sans couleur",
+                            folder
+                        ),
                     };
                     self.toast(now, text, false);
                 }
@@ -212,7 +227,7 @@ impl App {
             }
             HostsAction::AskExport(scope) => {
                 if self.profiles.is_empty() {
-                    self.toast(now, "Aucune connexion à exporter.", true);
+                    self.toast(now, tr!("Aucune connexion à exporter."), true);
                     return;
                 }
                 let form = ExportForm::new(&self.profiles, &self.settings, &scope);
@@ -226,9 +241,9 @@ impl App {
                     restore::forget();
                 }
                 let text = if enabled {
-                    "Les onglets seront rouverts au prochain démarrage"
+                    tr!("Les onglets seront rouverts au prochain démarrage")
                 } else {
-                    "Les onglets ne seront plus rouverts au démarrage"
+                    tr!("Les onglets ne seront plus rouverts au démarrage")
                 };
                 self.toast(now, text, false);
             }
@@ -246,9 +261,9 @@ impl App {
             }
             None => {
                 let mut dialog = rfd::FileDialog::new()
-                    .set_title("Ouvrir une sauvegarde chiffrée")
-                    .add_filter("Sauvegarde de Farfile", &[vault::EXTENSION])
-                    .add_filter("Tous les fichiers", &["*"]);
+                    .set_title(tr!("Ouvrir une sauvegarde chiffrée"))
+                    .add_filter(tr!("Sauvegarde de Farfile"), &[vault::EXTENSION])
+                    .add_filter(tr!("Tous les fichiers"), &["*"]);
                 if let Some(documents) = directories::UserDirs::new().and_then(|dirs| dirs.document_dir().map(PathBuf::from)) {
                     dialog = dialog.set_directory(documents);
                 }
@@ -333,7 +348,7 @@ impl App {
         let (sender, receiver) = mpsc::channel();
         let ctx = ctx.clone();
         let spawned = std::thread::Builder::new().name("export".to_owned()).spawn(move || {
-            let result = job.run().map_err(|error| format!("Export impossible : {error:#}"));
+            let result = job.run().map_err(|error| tr!("Export impossible : {error}", error = format!("{error:#}")));
             let _ = sender.send(result);
             ctx.request_repaint();
         });
@@ -342,7 +357,7 @@ impl App {
                 form.job = Some(receiver);
                 form.error = None;
             }
-            Err(error) => form.error = Some(format!("Export impossible : {error}")),
+            Err(error) => form.error = Some(tr!("Export impossible : {error}", error)),
         }
         self.keep_dialog(HostsDialog::Export(form));
     }
@@ -353,20 +368,26 @@ impl App {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut text = format!("{} dans « {name} »", match done.count {
-            1 => "1 connexion exportée".to_owned(),
-            count => format!("{count} connexions exportées"),
-        });
+        let mut text = trn!(
+            done.count,
+            "{n} connexion exportée dans « {name} »",
+            "{n} connexions exportées dans « {name} »",
+            name
+        );
         if done.secrets > 0 {
-            text.push_str(&format!(", {}", format::count(done.secrets, "mot de passe", "mots de passe")));
+            text.push_str(", ");
+            text.push_str(&trn!(done.secrets, "{n} mot de passe", "{n} mots de passe"));
         }
         if done.keys > 0 {
-            text.push_str(&format!(", {}", format::count(done.keys, "clé", "clés")));
+            text.push_str(", ");
+            text.push_str(&trn!(done.keys, "{n} clé", "{n} clés"));
         }
         if done.missing_keys > 0 {
-            text.push_str(&format!(
-                " ; {} introuvable(s) ou illisible(s), laissée(s) de côté",
-                format::count(done.missing_keys, "clé privée", "clés privées")
+            text.push_str(tr!(" ; "));
+            text.push_str(&trn!(
+                done.missing_keys,
+                "{n} clé privée introuvable(s) ou illisible(s), laissée(s) de côté",
+                "{n} clés privées introuvable(s) ou illisible(s), laissée(s) de côté"
             ));
         }
         self.toast(now, text, done.missing_keys > 0);
@@ -382,11 +403,13 @@ impl App {
             self.toast(now, "S3V_DEV_VAULT doit nommer le fichier d'export.", true);
             return None;
         }
-        let name = format!("connexions-{}.{}", chrono::Local::now().format("%Y-%m-%d"), vault::EXTENSION);
+        // A file name: the date stays the way files sort.
+        let stem = tr!("connexions-{date}", date = chrono::Local::now().format("%Y-%m-%d"));
+        let name = format!("{stem}.{}", vault::EXTENSION);
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Exporter les connexions")
+            .set_title(tr!("Exporter les connexions"))
             .set_file_name(name)
-            .add_filter("Sauvegarde de Farfile", &[vault::EXTENSION]);
+            .add_filter(tr!("Sauvegarde de Farfile"), &[vault::EXTENSION]);
         if let Some(documents) = directories::UserDirs::new().and_then(|dirs| dirs.document_dir().map(PathBuf::from)) {
             dialog = dialog.set_directory(documents);
         }
@@ -425,7 +448,7 @@ impl App {
                     form.job = Some(receiver);
                     form.error = None;
                 }
-                Err(error) => form.error = Some(format!("Déchiffrement impossible : {error}")),
+                Err(error) => form.error = Some(tr!("Déchiffrement impossible : {error}", error)),
             }
         }
         self.keep_dialog(HostsDialog::Unlock(form));
@@ -497,21 +520,32 @@ impl App {
         }
 
         let mut text = match (added, replaced) {
-            (_, 0) => format!("{} importée{}", format::count(added, "connexion", "connexions"), if added > 1 { "s" } else { "" }),
-            (0, _) => format!("{} remplacée{}", format::count(replaced, "connexion", "connexions"), if replaced > 1 { "s" } else { "" }),
-            _ => format!("{added} importée(s), {replaced} remplacée(s)"),
+            (_, 0) => trn!(added, "{n} connexion importée", "{n} connexions importées"),
+            (0, _) => trn!(replaced, "{n} connexion remplacée", "{n} connexions remplacées"),
+            _ => tr!("{added} importée(s), {replaced} remplacée(s)", added, replaced),
         };
         let mut failed = false;
         if let Err(error) = self.persist_profiles() {
-            text = format!("Enregistrement impossible : {error:#}");
+            text = tr!("Enregistrement impossible : {error}", error = format!("{error:#}"));
             failed = true;
         } else {
+            // French says it the same way for one and for more.
             if unsaved > 0 {
-                text.push_str(&format!(" ; {unsaved} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir"));
+                text.push_str(tr!(" ; "));
+                text.push_str(&trn!(
+                    unsaved,
+                    "{n} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir",
+                    "{n} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir"
+                ));
                 failed = true;
             }
             if key_failures > 0 {
-                text.push_str(&format!(" ; {key_failures} clé(s) privée(s) n'ont pas pu être recréées"));
+                text.push_str(tr!(" ; "));
+                text.push_str(&trn!(
+                    key_failures,
+                    "{n} clé(s) privée(s) n'ont pas pu être recréées",
+                    "{n} clé(s) privée(s) n'ont pas pu être recréées"
+                ));
                 failed = true;
             }
         }
@@ -653,8 +687,9 @@ impl ExportJob {
         let sealed = vault::seal(&plain, &self.password, KdfParams::STRONG)?;
         // Written next to its place first: a failure never leaves half a file.
         let partial = self.path.with_extension(format!("{}.part", vault::EXTENSION));
-        std::fs::write(&partial, &sealed).with_context(|| format!("écriture de {} impossible", partial.display()))?;
-        std::fs::rename(&partial, &self.path).with_context(|| format!("écriture de {} impossible", self.path.display()))?;
+        let failed = |path: &Path| tr!("écriture de {path} impossible", path = path.display());
+        std::fs::write(&partial, &sealed).with_context(|| failed(&partial))?;
+        std::fs::rename(&partial, &self.path).with_context(|| failed(&self.path))?;
         Ok(ExportDone {
             path: self.path,
             count,
@@ -682,12 +717,12 @@ fn read_key(key_path: &str, scripted: bool) -> Result<Option<KeyFile>> {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "cle".to_owned());
     let size = std::fs::metadata(path)
-        .with_context(|| format!("clé privée « {name} » introuvable"))?
+        .with_context(|| tr!("clé privée « {name} » introuvable", name))?
         .len();
     if size > MAX_KEY_FILE {
-        bail!("« {name} » est bien trop gros pour une clé privée");
+        bail!(tr!("« {name} » est bien trop gros pour une clé privée", name));
     }
-    let content = std::fs::read_to_string(path).with_context(|| format!("clé privée « {name} » illisible"))?;
+    let content = std::fs::read_to_string(path).with_context(|| tr!("clé privée « {name} » illisible", name))?;
     Ok(Some(KeyFile { name, content }))
 }
 
@@ -697,7 +732,7 @@ fn read_vault(path: &Path) -> Result<Vec<u8>, String> {
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let unreadable = |error: std::io::Error| format!("Lecture de « {name} » impossible : {error}");
+    let unreadable = |error: std::io::Error| tr!("Lecture de « {name} » impossible : {error}", name, error);
     if std::fs::metadata(path).map_err(unreadable)?.len() > MAX_VAULT_FILE {
         return Err(vault::VaultError::NotAVault.to_string());
     }
@@ -738,7 +773,7 @@ fn write_key(dir: &Path, key: &KeyFile) -> std::io::Result<PathBuf> {
             Err(error) => return Err(error),
         }
     }
-    Err(std::io::Error::other("trop de clés de ce nom"))
+    Err(std::io::Error::other(tr!("trop de clés de ce nom")))
 }
 
 #[cfg(test)]

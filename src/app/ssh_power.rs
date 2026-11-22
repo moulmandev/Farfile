@@ -70,14 +70,20 @@ impl App {
                     }
                 }
                 let count = broadcast::receivers(&self.tabs);
-                self.toast(now, format!("La saisie est diffusée à {count} terminaux"), false);
+                // French has always said "terminaux", even for one.
+                let text = trn!(
+                    count,
+                    "La saisie est diffusée à {n} terminaux",
+                    "La saisie est diffusée à {n} terminaux"
+                );
+                self.toast(now, text, false);
             }
             PowerAction::StopBroadcast => {
                 for tab in &mut self.tabs {
                     tab.power.broadcast = false;
                     broadcast::sync(tab);
                 }
-                self.toast(now, "Diffusion de la saisie arrêtée", false);
+                self.toast(now, tr!("Diffusion de la saisie arrêtée"), false);
             }
             PowerAction::ToggleStats(id) => {
                 let Some(index) = self.tab_index(id) else {
@@ -129,7 +135,7 @@ impl App {
     /// Types a snippet, after asking for the values of its variables.
     fn run_snippet(&mut self, id: &str, tab: Option<u64>, now: f64) {
         let Some(snippet) = self.ssh_power.snippets.iter().find(|snippet| snippet.id == id).cloned() else {
-            self.toast(now, "Ce snippet n'existe plus.", true);
+            self.toast(now, tr!("Ce snippet n'existe plus."), true);
             return;
         };
         let index = match tab {
@@ -137,7 +143,8 @@ impl App {
             None => self.snippet_target(),
         };
         let Some(index) = index else {
-            self.toast(now, format!("Ouvrez d'abord un terminal SSH pour lancer « {} ».", snippet.title()), true);
+            let text = tr!("Ouvrez d'abord un terminal SSH pour lancer « {name} ».", name = snippet.title());
+            self.toast(now, text, true);
             return;
         };
         if snippet.variables().is_empty() {
@@ -265,7 +272,8 @@ impl App {
         }
         self.ssh_power.save_at = None;
         if let Err(error) = snippets::save(&self.ssh_power.snippets) {
-            self.toast(now, format!("Enregistrement des snippets impossible : {error:#}"), true);
+            let text = tr!("Enregistrement des snippets impossible : {error}", error = format!("{error:#}"));
+            self.toast(now, text, true);
         }
     }
 
@@ -319,7 +327,7 @@ impl App {
             }
             if self.dialog.is_some() {
                 let name = snippet.title();
-                let text = format!("Snippet de démarrage « {name} » ignoré : ses variables sont à saisir.");
+                let text = tr!("Snippet de démarrage « {name} » ignoré : ses variables sont à saisir.", name);
                 self.toast(now, text, true);
                 continue;
             }
@@ -359,7 +367,7 @@ impl App {
             }
             "snippet" => match snippet_named(self, argument) {
                 Some(id) => self.run_snippet(&id, None, now),
-                None => self.toast(now, format!("Pas de snippet « {argument} »"), true),
+                None => self.toast(now, tr!("Pas de snippet « {argument} »", argument), true),
             },
             "snippetvar" => {
                 let (name, value) = argument.split_once(' ').unwrap_or((argument, ""));

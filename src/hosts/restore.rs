@@ -98,7 +98,7 @@ pub fn save(saved: &SavedTabs) -> Result<()> {
     }
     let partial = path.with_extension("json.part");
     std::fs::write(&partial, serde_json::to_vec_pretty(saved)?)?;
-    std::fs::rename(&partial, &path).context("enregistrement des onglets impossible")?;
+    std::fs::rename(&partial, &path).context(tr!("enregistrement des onglets impossible"))?;
     Ok(())
 }
 

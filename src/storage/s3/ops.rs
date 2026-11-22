@@ -44,13 +44,13 @@ impl S3Storage {
         remove: bool,
     ) -> Result<()> {
         if from.segments().len() < 2 || to.segments().len() < 2 {
-            bail!("un bucket ne peut être ni renommé ni copié, seulement ce qu'il contient");
+            bail!(tr!("un bucket ne peut être ni renommé ni copié, seulement ce qu'il contient"));
         }
         if from == to {
             return Ok(());
         }
-        let (bucket, key) = split(from, is_dir).context("chemin invalide")?;
-        let (to_bucket, to_key) = split(to, is_dir).context("chemin invalide")?;
+        let (bucket, key) = split(from, is_dir).context(tr!("chemin invalide"))?;
+        let (to_bucket, to_key) = split(to, is_dir).context(tr!("chemin invalide"))?;
 
         if !is_dir {
             let size = self.object_size(bucket, &key).await?;
@@ -65,17 +65,17 @@ impl S3Storage {
                     .send()
                     .await
                     .map_err(s3_err)
-                    .context("copié, mais l'original n'a pas pu être supprimé")?;
+                    .context(tr!("copié, mais l'original n'a pas pu être supprimé"))?;
             }
             return Ok(());
         }
 
         if to_bucket == bucket && to_key.starts_with(&key) {
-            bail!("un dossier ne peut pas aller dans lui-même");
+            bail!(tr!("un dossier ne peut pas aller dans lui-même"));
         }
         let keys = self.all_keys(bucket, &key).await?;
         if keys.is_empty() {
-            bail!("« {} » est introuvable", from.name());
+            bail!(tr!("« {name} » est introuvable", name = from.name()));
         }
         let total: u64 = keys.iter().map(|(_, size)| size).sum();
         progress.total.fetch_add(total, Ordering::Relaxed);
@@ -99,7 +99,7 @@ impl S3Storage {
             let originals: Vec<String> = keys.into_iter().map(|(key, _)| key).collect();
             self.delete_keys(bucket, &originals)
                 .await
-                .context("copié, mais les originaux n'ont pas tous pu être supprimés")?;
+                .context(tr!("copié, mais les originaux n'ont pas tous pu être supprimés"))?;
         }
         Ok(())
     }
@@ -113,7 +113,7 @@ impl S3Storage {
             .send()
             .await
             .map_err(|error| match error.as_service_error().and_then(|e| e.code()) {
-                Some("NotFound") | Some("NoSuchKey") => anyhow::anyhow!("« {key} » est introuvable"),
+                Some("NotFound") | Some("NoSuchKey") => anyhow::anyhow!(tr!("« {name} » est introuvable", name = key)),
                 _ => s3_err(error),
             })?;
         Ok(head.content_length().unwrap_or(0).max(0) as u64)
@@ -179,7 +179,7 @@ impl S3Storage {
             .map_err(s3_err)?;
         let upload_id = created
             .upload_id()
-            .context("le serveur n'a pas renvoyé d'identifiant de copie")?;
+            .context(tr!("le serveur n'a pas renvoyé d'identifiant de copie"))?;
 
         let source = copy_source(bucket, key);
         let part_size = part_size.max(size.div_ceil(MAX_PARTS));
@@ -260,11 +260,11 @@ impl S3Storage {
             match batched {
                 Ok(output) => {
                     if let Some(failure) = output.errors().first() {
-                        bail!(
-                            "{} : {}",
-                            failure.key().unwrap_or("?"),
-                            failure.message().unwrap_or("suppression refusée")
-                        );
+                        bail!(tr!(
+                            "{key} : {message}",
+                            key = failure.key().unwrap_or("?"),
+                            message = failure.message().unwrap_or(tr!("suppression refusée"))
+                        ));
                     }
                 }
                 // Same fallback as `delete`: one by one.
@@ -289,7 +289,7 @@ impl S3Storage {
         if is_dir || path.segments().len() < 2 {
             return Ok(Properties::default());
         }
-        let (bucket, key) = split(path, false).context("chemin invalide")?;
+        let (bucket, key) = split(path, false).context(tr!("chemin invalide"))?;
         let head = self.client.head_object().bucket(bucket).key(key).send().await.map_err(s3_err)?;
 
         let mut details = Vec::new();
@@ -298,10 +298,10 @@ impl S3Storage {
                 details.push((label.to_owned(), value.to_owned()));
             }
         };
-        fact("Type de contenu", head.content_type());
+        fact(tr!("Type de contenu"), head.content_type());
         // Providers leave the class out for the default one.
         fact(
-            "Classe de stockage",
+            tr!("Classe de stockage"),
             Some(head.storage_class().map_or("STANDARD", |class| class.as_str())),
         );
         fact("ETag", head.e_tag().map(|tag| tag.trim_matches('"')));
@@ -313,14 +313,14 @@ impl S3Storage {
             },
             (Some(other), _) => other.to_owned(),
             (None, Some(algorithm)) => format!("SSE-C ({algorithm})"),
-            (None, None) => "Non indiqué".to_owned(),
+            (None, None) => tr!("Non indiqué").to_owned(),
         };
-        fact("Chiffrement", Some(&encryption));
+        fact(tr!("Chiffrement"), Some(&encryption));
         fact("Cache-Control", head.cache_control());
         fact("Content-Encoding", head.content_encoding());
         fact("Content-Disposition", head.content_disposition());
         fact("Content-Language", head.content_language());
-        fact("Version", head.version_id().filter(|version| *version != "null"));
+        fact(tr!("Version"), head.version_id().filter(|version| *version != "null"));
 
         let mut metadata: Vec<(String, String)> = head
             .metadata()
@@ -343,7 +343,7 @@ impl S3Storage {
         if path.segments().is_empty() {
             return walk_size(self, path, tally).await;
         }
-        let (bucket, prefix) = split(path, true).context("chemin invalide")?;
+        let (bucket, prefix) = split(path, true).context(tr!("chemin invalide"))?;
         let mut folders = HashSet::new();
         let mut token = None;
         loop {

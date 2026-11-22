@@ -151,7 +151,7 @@ pub fn before_input(
     if response.clicked() {
         actions.push(Action::Terminal(TerminalAction::OpenLink(link.url.clone())));
     }
-    response.clone().on_hover_text_at_pointer(format!("{}\nCtrl+clic pour ouvrir", link.url));
+    response.clone().on_hover_text_at_pointer(tr!("{url}\nCtrl+clic pour ouvrir", url = link.url));
     Hover {
         link: Some(link),
         took_pointer: true,
@@ -390,11 +390,12 @@ pub fn overlays(
     let right = outer.right() - 10.0;
     if let Some(path) = terminal.extras.tap.recording() {
         let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-        let badge = badge(ui, p, pos2(right, top), &format!("{}  Enregistrement", icon::RECORD), p.danger);
+        let text = format!("{}  {}", icon::RECORD, tr!("Enregistrement"));
+        let badge = badge(ui, p, pos2(right, top), &text, p.danger);
         let clicked = ui
             .interact(badge, Id::new(("terminal-recording", terminal.extras.id)), Sense::click())
             .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .on_hover_text(format!("Enregistré dans « {name} »\nCliquer pour arrêter"))
+            .on_hover_text(tr!("Enregistré dans « {name} »\nCliquer pour arrêter", name))
             .clicked();
         if clicked {
             actions.push(Action::Terminal(TerminalAction::StopLog {
@@ -404,26 +405,33 @@ pub fn overlays(
         top = badge.bottom() + 6.0;
     }
     if scrolled > 0 {
-        let text = format!("{}  {scrolled} lignes plus haut", icon::ARROW_UP);
+        // French has always said "lignes", even for one.
+        let text = format!(
+            "{}  {}",
+            icon::ARROW_UP,
+            trn!(scrolled, "{n} lignes plus haut", "{n} lignes plus haut")
+        );
         top = badge(ui, p, pos2(right, top), &text, p.muted).bottom() + 6.0;
     }
     let now = ui.input(|input| input.time);
     if let Some((at, size)) = ui.ctx().data(|data| data.get_temp::<(f64, f32)>(zoom_id()))
         && now - at < 1.2
     {
-        badge(ui, p, pos2(right, top), &format!("{}  Texte {} pt", icon::TEXT_AA, format_size(size)), p.text);
+        let text = format!("{}  {}", icon::TEXT_AA, tr!("Texte {size} pt", size = format_size(size)));
+        badge(ui, p, pos2(right, top), &text, p.text);
         ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(1.2 - (now - at)));
     }
 
     context_menu(ui, response, grid, terminal, actions);
 }
 
-/// A size in points, with a decimal comma when it has a fraction.
+/// A size in points, with the decimal separator of the language when it
+/// has a fraction.
 pub fn format_size(size: f32) -> String {
     if size.fract() == 0.0 {
         format!("{size:.0}")
     } else {
-        format!("{size:.1}").replace('.', ",")
+        crate::format::decimal(f64::from(size), 1)
     }
 }
 
@@ -459,17 +467,17 @@ fn search_bar(ui: &mut Ui, p: &Palette, outer: Rect, terminal: &mut Terminal) ->
     bar.spacing_mut().item_spacing.x = 2.0;
 
     let mut close = false;
-    if icon_button(&mut bar, p, icon::X, "Fermer (Échap)", true).clicked() {
+    if icon_button(&mut bar, p, icon::X, tr!("Fermer (Échap)"), true).clicked() {
         close = true;
     }
     let any = !search.found.is_empty();
-    if icon_button(&mut bar, p, icon::CARET_DOWN, "Plus bas (Maj+Entrée)", any).clicked() {
+    if icon_button(&mut bar, p, icon::CARET_DOWN, tr!("Plus bas (Maj+Entrée)"), any).clicked() {
         search.newer();
     }
-    if icon_button(&mut bar, p, icon::CARET_UP, "Plus haut (Entrée)", any).clicked() {
+    if icon_button(&mut bar, p, icon::CARET_UP, tr!("Plus haut (Entrée)"), any).clicked() {
         search.older();
     }
-    if toggle(&mut bar, p, "Aa", search.case_sensitive, "Respecter la casse").clicked() {
+    if toggle(&mut bar, p, "Aa", search.case_sensitive, tr!("Respecter la casse")).clicked() {
         search.case_sensitive = !search.case_sensitive;
     }
     let summary = search.summary();
@@ -482,7 +490,7 @@ fn search_bar(ui: &mut Ui, p: &Palette, outer: Rect, terminal: &mut Terminal) ->
     let field = bar.add(
         TextEdit::singleline(&mut search.query)
             .id(field_id)
-            .hint_text("Rechercher dans le terminal")
+            .hint_text(tr!("Rechercher dans le terminal"))
             .desired_width(bar.available_width())
             .return_key(None)
             .margin(egui::Margin { left: 26, right: 6, top: 5, bottom: 5 }),
@@ -592,18 +600,18 @@ fn context_menu(
 fn menu(ui: &mut Ui, terminal: &mut Terminal, actions: &mut Vec<Action>) {
     let id = terminal.extras.id;
     if let Some(url) = terminal.extras.menu_link.clone() {
-        if item(ui, true, format!("{}  Ouvrir le lien", icon::ARROW_SQUARE_OUT), "Ctrl+clic") {
+        if item(ui, true, format!("{}  {}", icon::ARROW_SQUARE_OUT, tr!("Ouvrir le lien")), tr!("Ctrl+clic")) {
             actions.push(Action::Terminal(TerminalAction::OpenLink(url.clone())));
         }
-        if item(ui, true, format!("{}  Copier le lien", icon::LINK), "") {
+        if item(ui, true, format!("{}  {}", icon::LINK, tr!("Copier le lien")), "") {
             ui.ctx().copy_text(url);
-            actions.push(Action::Terminal(TerminalAction::Notice("Lien copié".to_owned())));
+            actions.push(Action::Terminal(TerminalAction::Notice(tr!("Lien copié").to_owned())));
         }
         ui.separator();
     }
 
     let has_selection = terminal.extras.all_selected || terminal.selection_range().is_some();
-    if item(ui, has_selection, format!("{}  Copier", icon::COPY), "Ctrl+Maj+C") {
+    if item(ui, has_selection, format!("{}  {}", icon::COPY, tr!("Copier")), tr!("Ctrl+Maj+C")) {
         let text = if terminal.extras.all_selected {
             Some(all_text(terminal))
         } else {
@@ -615,36 +623,37 @@ fn menu(ui: &mut Ui, terminal: &mut Terminal, actions: &mut Vec<Action>) {
         terminal.selection = None;
         terminal.extras.all_selected = false;
     }
-    if item(ui, true, format!("{}  Coller", icon::CLIPBOARD_TEXT), "Ctrl+V") {
+    if item(ui, true, format!("{}  {}", icon::CLIPBOARD_TEXT, tr!("Coller")), tr!("Ctrl+V")) {
         terminal.wants_focus = true;
         ui.ctx().send_viewport_cmd(ViewportCommand::RequestPaste);
     }
-    if item(ui, true, format!("{}  Tout sélectionner", icon::SELECTION_ALL), "Ctrl+Maj+A") {
+    if item(ui, true, format!("{}  {}", icon::SELECTION_ALL, tr!("Tout sélectionner")), tr!("Ctrl+Maj+A")) {
         terminal.selection = None;
         terminal.extras.all_selected = true;
     }
     ui.separator();
-    if item(ui, true, format!("{}  Rechercher…", icon::MAGNIFYING_GLASS), "Ctrl+Maj+F") {
+    if item(ui, true, format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher…")), tr!("Ctrl+Maj+F")) {
         open_search(terminal);
     }
     ui.separator();
-    if item(ui, true, format!("{}  Effacer l'écran", icon::ERASER), "Ctrl+L") {
+    if item(ui, true, format!("{}  {}", icon::ERASER, tr!("Effacer l'écran")), tr!("Ctrl+L")) {
         // The shell redraws its prompt at the top, as with `clear`.
         terminal.send([0x0c]);
         terminal.wants_focus = true;
     }
-    if item(ui, true, format!("{}  Effacer l'historique", icon::BROOM), "") {
+    if item(ui, true, format!("{}  {}", icon::BROOM, tr!("Effacer l'historique")), "") {
         clear_history(terminal);
     }
     ui.separator();
     if terminal.extras.tap.recording().is_some() {
-        if item(ui, true, RichText::new(format!("{}  Arrêter l'enregistrement", icon::STOP_CIRCLE)), "") {
+        let stop = RichText::new(format!("{}  {}", icon::STOP_CIRCLE, tr!("Arrêter l'enregistrement")));
+        if item(ui, true, stop, "") {
             actions.push(Action::Terminal(TerminalAction::StopLog { terminal: id }));
         }
-    } else if item(ui, true, format!("{}  Enregistrer la session…", icon::RECORD), "") {
+    } else if item(ui, true, format!("{}  {}", icon::RECORD, tr!("Enregistrer la session…")), "") {
         actions.push(Action::Terminal(TerminalAction::StartLog { terminal: id }));
     }
-    if item(ui, true, format!("{}  Apparence…", icon::PALETTE), "") {
+    if item(ui, true, format!("{}  {}", icon::PALETTE, tr!("Apparence…")), "") {
         actions.push(Action::Terminal(TerminalAction::OpenLook));
     }
 }
@@ -679,24 +688,24 @@ pub fn tab_menu(ui: &mut Ui, tab: &Tab, actions: &mut Vec<Action>) {
         return;
     };
     let id = terminal.extras.id;
-    if item(ui, true, format!("{}  Rechercher dans le terminal…", icon::MAGNIFYING_GLASS), "") {
+    if item(ui, true, format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher dans le terminal…")), "") {
         actions.push(Action::Terminal(TerminalAction::Search { tab: tab.id }));
     }
     if terminal.extras.tap.recording().is_some() {
-        if item(ui, true, format!("{}  Arrêter l'enregistrement", icon::STOP_CIRCLE), "") {
+        if item(ui, true, format!("{}  {}", icon::STOP_CIRCLE, tr!("Arrêter l'enregistrement")), "") {
             actions.push(Action::Terminal(TerminalAction::StopLog { terminal: id }));
         }
-    } else if item(ui, true, format!("{}  Enregistrer la session…", icon::RECORD), "") {
+    } else if item(ui, true, format!("{}  {}", icon::RECORD, tr!("Enregistrer la session…")), "") {
         actions.push(Action::Terminal(TerminalAction::StartLog { terminal: id }));
     }
 }
 
 /// In the form of an SSH connection: record every session.
 pub fn profile_fields(ui: &mut Ui, p: &Palette, draft: &mut Profile) {
-    checkbox(ui, p, &mut draft.log_sessions, "Enregistrer chaque session du terminal").on_hover_text(
+    checkbox(ui, p, &mut draft.log_sessions, tr!("Enregistrer chaque session du terminal")).on_hover_text(tr!(
         "Le journal de chaque session est écrit dans le dossier choisi\n\
-         dans l'apparence du terminal (menu du terminal, « Apparence… »).",
-    );
+         dans l'apparence du terminal (menu du terminal, « Apparence… »)."
+    ));
     ui.add_space(6.0);
 }
 

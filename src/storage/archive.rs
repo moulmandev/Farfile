@@ -92,7 +92,7 @@ fn unpack_into<'r>(reader: impl Read + 'r, dest: &Path, progress: &TreeProgress,
 
     for entry in archive.entries()? {
         if progress.bytes.is_cancelled() {
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let mut entry = entry?;
         report.entries += 1;
@@ -122,8 +122,11 @@ fn unpack_into<'r>(reader: impl Read + 'r, dest: &Path, progress: &TreeProgress,
             Ok(()) => {
                 progress.files_done.fetch_add(1, Ordering::Relaxed);
             }
-            Err(_) if progress.bytes.is_cancelled() => bail!("annulé"),
-            Err(error) => report.unwritable.push(format!("{} : {error:#}", below(&name))),
+            Err(_) if progress.bytes.is_cancelled() => bail!(tr!("annulé")),
+            Err(error) => {
+                let error = format!("{error:#}");
+                report.unwritable.push(tr!("{name} : {error}", name = below(&name), error));
+            }
         }
     }
     Ok(())
@@ -150,7 +153,7 @@ fn write_file(
         if progress.bytes.is_cancelled() {
             drop(file);
             let _ = std::fs::remove_file(target);
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let read = entry.read(buffer)?;
         if read == 0 {

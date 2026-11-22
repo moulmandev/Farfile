@@ -89,7 +89,7 @@ impl S3Storage {
                     .map_err(s3_err)?;
                 let upload_id = created
                     .upload_id()
-                    .context("le serveur n'a pas renvoyé d'identifiant d'envoi")?
+                    .context(tr!("le serveur n'a pas renvoyé d'identifiant d'envoi"))?
                     .to_owned();
                 (upload_id, PART_SIZE.max(size.div_ceil(MAX_PARTS)), Vec::new())
             }

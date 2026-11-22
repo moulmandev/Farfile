@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use super::{Entry, EntryKind, Found, FoundSink, ListPage, Progress, RemotePath, Storage, below, save_stream};
 
 /// What the root and its built-in entry are called.
-pub const TITLE: &str = "Cet ordinateur";
+pub const TITLE: &str = tr_key!("Cet ordinateur");
 
 /// What an entry of the root is, for its icon.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,9 +38,13 @@ pub enum DriveKind {
 /// A folder listed at the root next to the drives.
 #[derive(Clone, Debug)]
 pub struct Place {
+    /// Its name in the language the app started in.
     pub name: String,
     pub path: PathBuf,
     pub spot: Spot,
+    /// Its names in the other languages: paths saved before a change of
+    /// language (tabs reopened at start) still lead to it.
+    pub aliases: Vec<String>,
 }
 
 /// A drive, as listed at the root: `Windows (C:)`.
@@ -83,9 +87,9 @@ fn user_places() -> Vec<Place> {
     let home_name = home
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Dossier personnel".to_owned());
+        .unwrap_or_else(|| tr!("Dossier personnel").to_owned());
     let mut places = Vec::new();
-    let mut add = |name: &str, path: Option<&Path>, spot| {
+    let mut add = |name: &str, aliases: Vec<String>, path: Option<&Path>, spot| {
         if let Some(path) = path
             && !places.iter().any(|place: &Place| place.name == name)
         {
@@ -93,13 +97,23 @@ fn user_places() -> Vec<Place> {
                 name: name.to_owned(),
                 path: path.to_path_buf(),
                 spot,
+                aliases,
             });
         }
     };
-    add("Bureau", dirs.desktop_dir(), Spot::Desktop);
-    add("Documents", dirs.document_dir(), Spot::Documents);
-    add("Téléchargements", dirs.download_dir(), Spot::Downloads);
-    add(&home_name, Some(&home), Spot::Home);
+    // Each name in every language, for the paths saved in another one.
+    let every = |french: &'static str| -> Vec<String> {
+        let mut names: Vec<String> = crate::i18n::Lang::ALL
+            .iter()
+            .map(|lang| crate::i18n::lookup_in(*lang, french).to_owned())
+            .collect();
+        names.dedup();
+        names
+    };
+    add(tr!("Bureau"), every(tr_key!("Bureau")), dirs.desktop_dir(), Spot::Desktop);
+    add(tr!("Documents"), every(tr_key!("Documents")), dirs.document_dir(), Spot::Documents);
+    add(tr!("Téléchargements"), every(tr_key!("Téléchargements")), dirs.download_dir(), Spot::Downloads);
+    add(&home_name, Vec::new(), Some(&home), Spot::Home);
     places
 }
 
@@ -112,18 +126,19 @@ impl LocalStorage {
     /// and names that would leave the folder they are in, have none.
     pub fn resolve(&self, path: &RemotePath) -> Result<PathBuf> {
         let Some((first, rest)) = path.segments().split_first() else {
-            bail!("« {TITLE} » n'est pas un dossier du disque");
+            bail!(tr!("« {name} » n'est pas un dossier du disque", name = crate::i18n::lookup(TITLE)));
         };
-        let mut real = match self.places.iter().find(|place| place.name == *first) {
+        let named = |place: &&Place| place.name == *first || place.aliases.iter().any(|alias| alias == first);
+        let mut real = match self.places.iter().find(named) {
             Some(place) => place.path.clone(),
             None => match drive_letter(first) {
                 Some(letter) => PathBuf::from(format!("{letter}:\\")),
-                None => bail!("« {first} » est introuvable sur cet ordinateur"),
+                None => bail!(tr!("« {name} » est introuvable sur cet ordinateur", name = first)),
             },
         };
         for segment in rest {
             if matches!(segment.as_str(), "." | "..") || segment.contains(['\\', ':']) {
-                bail!("nom de fichier invalide : « {segment} »");
+                bail!(tr!("nom de fichier invalide : « {name} »", name = segment));
             }
             real.push(segment);
         }
@@ -302,11 +317,11 @@ fn drives() -> Vec<Drive> {
             }
             if label.is_empty() || label.contains(['(', ')', '/']) {
                 label = match kind {
-                    DriveKind::Fixed => "Disque local",
-                    DriveKind::Removable => "Disque amovible",
-                    DriveKind::Network => "Lecteur réseau",
-                    DriveKind::Optical => "Lecteur CD",
-                    DriveKind::Other => "Lecteur",
+                    DriveKind::Fixed => tr!("Disque local"),
+                    DriveKind::Removable => tr!("Disque amovible"),
+                    DriveKind::Network => tr!("Lecteur réseau"),
+                    DriveKind::Optical => tr!("Lecteur CD"),
+                    DriveKind::Other => tr!("Lecteur"),
                 }
                 .to_owned();
             }
@@ -340,14 +355,14 @@ fn recycle(path: &Path) -> Result<()> {
     // flags keep the shell from showing anything.
     let result = unsafe { SHFileOperationW(&mut operation) };
     if result != 0 || operation.fAnyOperationsAborted != 0 {
-        bail!("impossible de le placer dans la corbeille (code {result:#x})");
+        bail!(tr!("impossible de le placer dans la corbeille (code {code})", code = format!("{result:#x}")));
     }
     Ok(())
 }
 
 #[cfg(not(windows))]
 fn recycle(_path: &Path) -> Result<()> {
-    bail!("pas de corbeille sur ce système")
+    bail!(tr!("pas de corbeille sur ce système"))
 }
 
 /// Files Windows hides from everyone: `desktop.ini`, `Thumbs.db`, the
@@ -371,7 +386,7 @@ fn modified(meta: &std::fs::Metadata) -> Option<i64> {
 
 /// The entries of a folder of the disk. Links show as what they point to.
 fn read_folder(dir: &Path) -> Result<Vec<Entry>> {
-    let listed = std::fs::read_dir(dir).with_context(|| format!("impossible de lire {}", dir.display()))?;
+    let listed = std::fs::read_dir(dir).with_context(|| tr!("impossible de lire {path}", path = dir.display()))?;
     let mut entries = Vec::new();
     for item in listed.flatten() {
         let Ok(mut meta) = item.metadata() else {
@@ -412,7 +427,7 @@ fn walk_disk(dir: &Path, send: &dyn Fn(Found) -> bool) -> Result<()> {
         let listed = match std::fs::read_dir(&dir) {
             Ok(listed) => listed,
             Err(error) if prefix.is_empty() => {
-                return Err(error).with_context(|| format!("impossible de lire {}", dir.display()));
+                return Err(error).with_context(|| tr!("impossible de lire {path}", path = dir.display()));
             }
             Err(error) => {
                 if !send(Found::Unreadable { relative: prefix, error: error.to_string() }) {
@@ -451,14 +466,14 @@ fn walk_disk(dir: &Path, send: &dyn Fn(Found) -> bool) -> Result<()> {
 
 /// Runs blocking file system work off the runtime's threads.
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
-    tokio::task::spawn_blocking(work).await.context("tâche interrompue")?
+    tokio::task::spawn_blocking(work).await.context(tr!("tâche interrompue"))?
 }
 
 /// Copies the file `src` to `dest` through a `.part` file, as downloads do.
 async fn copy_file(src: &Path, dest: &Path, progress: &Progress) -> Result<()> {
     let mut file = tokio::fs::File::open(src)
         .await
-        .with_context(|| format!("impossible de lire {}", src.display()))?;
+        .with_context(|| tr!("impossible de lire {path}", path = src.display()))?;
     if let Ok(meta) = file.metadata().await {
         progress.set_total(meta.len());
     }
@@ -490,7 +505,7 @@ impl Storage for LocalStorage {
             }
         }
         drop(receiver);
-        reading.await.context("tâche interrompue")?
+        reading.await.context(tr!("tâche interrompue"))?
     }
 
     async fn download(&self, path: &RemotePath, dest: &Path, progress: &Progress) -> Result<()> {
@@ -499,14 +514,14 @@ impl Storage for LocalStorage {
 
     async fn upload(&self, src: &Path, dest: &RemotePath, progress: &Progress) -> Result<()> {
         if dest.segments().len() < 2 {
-            bail!("choisissez d'abord un dossier de cet ordinateur");
+            bail!(tr!("choisissez d'abord un dossier de cet ordinateur"));
         }
         copy_file(src, &self.resolve(dest)?, progress).await
     }
 
     async fn delete(&self, path: &RemotePath, is_dir: bool) -> Result<u64> {
         if path.segments().len() < 2 {
-            bail!("« {} » ne peut pas être supprimé d'ici", path.name());
+            bail!(tr!("« {name} » ne peut pas être supprimé d'ici", name = path.name()));
         }
         let real = self.resolve(path)?;
         let to_bin = self.recycles(&path.parent().unwrap_or_default());
@@ -514,9 +529,9 @@ impl Storage for LocalStorage {
             if to_bin {
                 recycle(&real)
             } else if is_dir {
-                std::fs::remove_dir_all(&real).with_context(|| format!("impossible de supprimer {}", real.display()))
+                std::fs::remove_dir_all(&real).with_context(|| tr!("impossible de supprimer {path}", path = real.display()))
             } else {
-                std::fs::remove_file(&real).with_context(|| format!("impossible de supprimer {}", real.display()))
+                std::fs::remove_file(&real).with_context(|| tr!("impossible de supprimer {path}", path = real.display()))
             }
         })
         .await?;
@@ -525,12 +540,12 @@ impl Storage for LocalStorage {
 
     async fn create_folder(&self, path: &RemotePath) -> Result<()> {
         if path.segments().len() < 2 {
-            bail!("choisissez d'abord un dossier de cet ordinateur");
+            bail!(tr!("choisissez d'abord un dossier de cet ordinateur"));
         }
         let real = self.resolve(path)?;
         tokio::fs::create_dir(&real)
             .await
-            .with_context(|| format!("impossible de créer {}", real.display()))
+            .with_context(|| tr!("impossible de créer {path}", path = real.display()))
     }
 
     /// The path of the file on the disk, the way Explorer writes it.
@@ -592,6 +607,7 @@ pub mod tests {
                 name: "Essai".to_owned(),
                 path: dir.to_path_buf(),
                 spot: Spot::Documents,
+                aliases: vec!["Trial".to_owned()],
             }],
             false,
         )
@@ -649,6 +665,8 @@ pub mod tests {
         let storage = storage_in(Path::new(r"C:\Users\Léa\Documents"));
         let path = RemotePath::parse("/Essai/projets/site web");
         assert_eq!(storage.resolve(&path).unwrap(), PathBuf::from(r"C:\Users\Léa\Documents\projets\site web"));
+        // A path saved while another language was in use.
+        assert_eq!(storage.resolve(&RemotePath::parse("/Trial/a")).unwrap(), PathBuf::from(r"C:\Users\Léa\Documents\a"));
         assert_eq!(storage.resolve(&RemotePath::parse("/C:/Windows")).unwrap(), PathBuf::from(r"C:\Windows"));
         assert_eq!(storage.resolve(&RemotePath::parse("/Data (E:)/a")).unwrap(), PathBuf::from(r"E:\a"));
         assert_eq!(storage.locate(Path::new(r"C:\Users\Léa\Documents\projets")), Some(RemotePath::parse("/Essai/projets")));

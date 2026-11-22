@@ -23,9 +23,9 @@ impl Expiry {
         match self {
             Self::Minutes15 => "15 min",
             Self::Hour1 => "1 h",
-            Self::Day1 => "1 jour",
-            Self::Days7 => "7 jours",
-            Self::Custom => "Autre…",
+            Self::Day1 => tr!("1 jour"),
+            Self::Days7 => tr!("7 jours"),
+            Self::Custom => tr!("Autre…"),
         }
     }
 
@@ -54,9 +54,9 @@ impl Unit {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Minutes => "minutes",
-            Self::Hours => "heures",
-            Self::Days => "jours",
+            Self::Minutes => tr!("minutes"),
+            Self::Hours => tr!("heures"),
+            Self::Days => tr!("jours"),
         }
     }
 
@@ -78,13 +78,13 @@ pub fn custom_duration(amount: &str, unit: Unit) -> Result<Duration, &'static st
         .ok()
         .filter(|amount| amount.is_finite() && *amount > 0.0)
         .map(|amount| (amount * unit.seconds() as f64).round() as u64)
-        .ok_or("Indiquez une durée positive.")?;
+        .ok_or_else(|| tr!("Indiquez une durée positive."))?;
     if amount < 60 {
-        return Err("Un lien dure au moins une minute.");
+        return Err(tr!("Un lien dure au moins une minute."));
     }
     let duration = Duration::from_secs(amount);
     if duration > MAX_EXPIRY {
-        return Err("Un lien signé ne peut pas durer plus de 7 jours.");
+        return Err(tr!("Un lien signé ne peut pas durer plus de 7 jours."));
     }
     Ok(duration)
 }
@@ -111,7 +111,7 @@ pub fn attachment(name: &str) -> String {
 pub fn expiry_text(duration: Duration, now_unix: i64) -> String {
     let seconds = duration.as_secs();
     let span = if seconds.is_multiple_of(24 * 3600) {
-        crate::format::count((seconds / (24 * 3600)) as usize, "jour", "jours")
+        trn!(seconds / (24 * 3600), "{n} jour", "{n} jours")
     } else if seconds.is_multiple_of(3600) {
         format!("{} h", seconds / 3600)
     } else if seconds >= 3600 {
@@ -121,8 +121,8 @@ pub fn expiry_text(duration: Duration, now_unix: i64) -> String {
     };
     let at = crate::format::date(now_unix + seconds as i64);
     match at.split_once(' ') {
-        Some((day, time)) => format!("Valable {span}, jusqu'au {day} à {time}"),
-        None => format!("Valable {span}"),
+        Some((day, time)) => tr!("Valable {span}, jusqu'au {day} à {time}", span, day, time),
+        None => tr!("Valable {span}", span),
     }
 }
 

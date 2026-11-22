@@ -198,9 +198,10 @@ impl Search {
     pub fn summary(&self) -> String {
         match (self.found.len(), self.current) {
             _ if self.query.is_empty() => String::new(),
-            (0, _) => "Aucun résultat".to_owned(),
-            (count, Some(at)) => format!("{} sur {count}", at + 1),
-            (count, None) => format!("{count} résultats"),
+            (0, _) => tr!("Aucun résultat").to_owned(),
+            (count, Some(at)) => tr!("{at} sur {count}", at = at + 1, count),
+            // French has always said "résultats", even for one.
+            (count, None) => trn!(count, "{n} résultats", "{n} résultats"),
         }
     }
 

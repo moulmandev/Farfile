@@ -29,7 +29,7 @@ impl LineEnding {
         match self {
             Self::Lf => "LF (Linux, macOS)",
             Self::Crlf => "CRLF (Windows)",
-            Self::Cr => "CR (anciens Mac)",
+            Self::Cr => tr!("CR (anciens Mac)"),
         }
     }
 
@@ -200,9 +200,9 @@ impl Indent {
 
     pub fn label(&self) -> String {
         if self.tabs {
-            format!("Tabulations : {}", self.width)
+            tr!("Tabulations : {width}", width = self.width)
         } else {
-            format!("Espaces : {}", self.width)
+            tr!("Espaces : {width}", width = self.width)
         }
     }
 }

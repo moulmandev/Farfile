@@ -111,7 +111,7 @@ impl Find {
             return String::new();
         }
         if self.error.is_some() {
-            return "Expression invalide".to_owned();
+            return tr!("Expression invalide").to_owned();
         }
         let total = if self.capped {
             format!("{}+", thousands(self.matches.len()))
@@ -119,10 +119,9 @@ impl Find {
             thousands(self.matches.len())
         };
         match (self.matches.len(), self.current) {
-            (0, _) => "Aucun résultat".to_owned(),
-            (_, Some(current)) => format!("{} sur {total}", current + 1),
-            (1, None) => "1 résultat".to_owned(),
-            (_, None) => format!("{total} résultats"),
+            (0, _) => tr!("Aucun résultat").to_owned(),
+            (_, Some(current)) => tr!("{current} sur {total}", current = current + 1, total),
+            (count, None) => trn!(count, "{total} résultat", "{total} résultats", total),
         }
     }
 }
@@ -975,13 +974,20 @@ impl Editor {
     }
 }
 
-/// `12345` → `12 345`, as French writes numbers.
+/// `12345` → `12 345`, as French writes numbers (`12,345` in English,
+/// `12.345` in German and Spanish).
 pub fn thousands(number: usize) -> String {
+    use crate::i18n::Lang;
+    let separator = match crate::i18n::current() {
+        Lang::Fr => ' ',
+        Lang::En => ',',
+        Lang::De | Lang::Es => '.',
+    };
     let digits = number.to_string();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (index, digit) in digits.chars().enumerate() {
         if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            out.push(' ');
+            out.push(separator);
         }
         out.push(digit);
     }

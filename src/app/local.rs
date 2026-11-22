@@ -115,7 +115,7 @@ impl App {
     fn copy_to_other(&mut self, now: f64) -> Option<(Source, Destination)> {
         let there = self.shown_index(other(self.views.focus)).filter(|index| self.tabs[*index].panes.files());
         let Some(there) = there else {
-            self.toast(now, "Affichez une deuxième vue à côté pour y copier des fichiers.", true);
+            self.toast(now, tr!("Affichez une deuxième vue à côté pour y copier des fichiers."), true);
             return None;
         };
         let session = &self.tabs.get(self.active)?.session;
@@ -248,7 +248,7 @@ impl App {
         let file = local.resolve(&session.path.child(name));
         let result = file.and_then(|file| open_in_place(&file, how, &self.settings.editor));
         if let Err(error) = result {
-            self.toast(now, format!("Ouverture impossible : {error:#}"), true);
+            self.toast(now, tr!("Ouverture impossible : {error}", error = format!("{error:#}")), true);
         }
         true
     }

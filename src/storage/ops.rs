@@ -186,7 +186,7 @@ where
     let mut level = vec![String::new()];
     while !level.is_empty() {
         if cancelled() {
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let listed: Vec<(String, Vec<Entry>)> = stream::iter(std::mem::take(&mut level))
             .map(|relative| async move {

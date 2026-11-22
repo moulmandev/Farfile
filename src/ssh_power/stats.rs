@@ -351,18 +351,18 @@ pub fn uptime_text(seconds: f64) -> String {
     match (days, hours) {
         (0, 0) => format!("{minutes} min"),
         (0, _) => format!("{hours} h {minutes:02} min"),
-        _ => format!("{days} j {hours} h"),
+        _ => tr!("{days} j {hours} h", days, hours),
     }
 }
 
-/// A decimal number the French way: `0,31`.
+/// A decimal number with the separator of the language: `0,31`.
 pub fn decimal(value: f64, digits: usize) -> String {
-    format!("{value:.digits$}").replace('.', ",")
+    crate::format::decimal(value, digits)
 }
 
 /// `12 %`.
 pub fn percent(fraction: f32) -> String {
-    format!("{:.0} %", (fraction * 100.0).clamp(0.0, 100.0))
+    tr!("{value} %", value = format!("{:.0}", (fraction * 100.0).clamp(0.0, 100.0)))
 }
 
 /// Where the overview is at.
@@ -389,7 +389,7 @@ pub struct View {
 
 impl View {
     /// Takes in a new reading, comparing it with the previous one.
-    fn update(&mut self, sample: Sample, previous: Option<&(Sample, Instant)>, now: Instant) {
+    pub(crate) fn update(&mut self, sample: Sample, previous: Option<&(Sample, Instant)>, now: Instant) {
         if !sample.is_useful() {
             self.status = Status::Unsupported(sample.system.clone());
             self.sample = Some(sample);
@@ -506,7 +506,7 @@ async fn poll(settings: Arc<SshSettings>, shared: Arc<Shared>, mut stop: oneshot
                 previous = None;
                 let mut text = format!("{error:#}");
                 if failures >= MAX_FAILED_CONNECTIONS {
-                    text.push_str(" (masquez puis affichez l'aperçu pour réessayer)");
+                    text = tr!("{error} (masquez puis affichez l'aperçu pour réessayer)", error = text);
                 }
                 view.status = Status::Failed(text);
                 delay = RETRY * 2u32.pow(failures.saturating_sub(1));
@@ -531,11 +531,11 @@ async fn read(settings: &SshSettings, connection: &mut Option<SshHandle>) -> Res
         *connection = Some(ssh::connect(settings).await?);
     }
     let Some(handle) = connection.as_ref() else {
-        return Err(anyhow!("connexion perdue"));
+        return Err(anyhow!(tr!("connexion perdue")));
     };
     let output = tokio::time::timeout(COMMAND_TIMEOUT, ssh::run_command(handle, COMMAND))
         .await
-        .map_err(|_| anyhow!("le serveur ne répond plus"))??;
+        .map_err(|_| anyhow!(tr!("le serveur ne répond plus")))??;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 

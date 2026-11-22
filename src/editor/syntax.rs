@@ -185,9 +185,10 @@ pub struct EditorTheme {
     pub dark: bool,
 }
 
-/// The themes offered: id, then name. The first follows the app.
+/// The themes offered: id, then name (to translate where shown, with
+/// [`crate::i18n::lookup`]). The first follows the app.
 pub const THEMES: [(&str, &str); 17] = [
-    (AUTO, "Automatique (suit l'application)"),
+    (AUTO, tr_key!("Automatique (suit l'application)")),
     ("OneHalfDark", "One Half Dark"),
     ("OneHalfLight", "One Half Light"),
     ("Monokai Extended", "Monokai"),
@@ -196,20 +197,22 @@ pub const THEMES: [(&str, &str); 17] = [
     ("TwoDark", "TwoDark"),
     ("Catppuccin Mocha", "Catppuccin Mocha"),
     ("Catppuccin Latte", "Catppuccin Latte"),
-    ("gruvbox-dark", "Gruvbox sombre"),
-    ("gruvbox-light", "Gruvbox clair"),
-    ("Solarized (dark)", "Solarized sombre"),
-    ("Solarized (light)", "Solarized clair"),
+    ("gruvbox-dark", tr_key!("Gruvbox sombre")),
+    ("gruvbox-light", tr_key!("Gruvbox clair")),
+    ("Solarized (dark)", tr_key!("Solarized sombre")),
+    ("Solarized (light)", tr_key!("Solarized clair")),
     ("GitHub", "GitHub"),
-    ("Coldark-Dark", "Coldark sombre"),
-    ("Coldark-Cold", "Coldark clair"),
+    ("Coldark-Dark", tr_key!("Coldark sombre")),
+    ("Coldark-Cold", tr_key!("Coldark clair")),
     ("Sublime Snazzy", "Sublime Snazzy"),
 ];
 
 pub const AUTO: &str = "auto";
 
+/// The name of a theme, in the language in use.
 pub fn theme_label(id: &str) -> &'static str {
-    THEMES.iter().find(|(known, _)| *known == id).map_or(THEMES[0].1, |(_, label)| label)
+    let label = THEMES.iter().find(|(known, _)| *known == id).map_or(THEMES[0].1, |(_, label)| label);
+    crate::i18n::lookup(label)
 }
 
 fn embedded(id: &str) -> Option<EmbeddedThemeName> {

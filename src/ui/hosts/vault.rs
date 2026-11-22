@@ -131,9 +131,9 @@ fn password_field(ui: &mut Ui, p: &Palette, label: &str, text: &mut String, reve
                     .margin(egui::Margin::symmetric(10, 7)),
             );
             let (glyph, tooltip) = if *reveal {
-                (icon::EYE_SLASH, "Masquer le mot de passe")
+                (icon::EYE_SLASH, tr!("Masquer le mot de passe"))
             } else {
-                (icon::EYE, "Afficher le mot de passe")
+                (icon::EYE, tr!("Afficher le mot de passe"))
             };
             if icon_button(ui, p, glyph, tooltip, true).clicked() {
                 *reveal = !*reveal;
@@ -166,7 +166,7 @@ fn strength_meter(ui: &mut Ui, p: &Palette, password: &str) {
     let label = if password.is_empty() {
         String::new()
     } else if password.chars().count() < MIN_PASSWORD_CHARS {
-        format!("Trop court : au moins {MIN_PASSWORD_CHARS} caractères")
+        tr!("Trop court : au moins {min} caractères", min = MIN_PASSWORD_CHARS)
     } else {
         score.label().to_owned()
     };
@@ -313,11 +313,11 @@ impl ExportForm {
     /// What still prevents the export, if anything.
     pub fn problem(&self) -> Option<&'static str> {
         if self.selected.is_empty() {
-            Some("Cochez au moins une connexion.")
+            Some(tr!("Cochez au moins une connexion."))
         } else if self.password.chars().count() < MIN_PASSWORD_CHARS {
-            Some("Choisissez un mot de passe d'au moins 8 caractères.")
+            Some(tr!("Choisissez un mot de passe d'au moins 8 caractères."))
         } else if self.password != self.confirm {
-            Some("Les deux mots de passe ne sont pas identiques.")
+            Some(tr!("Les deux mots de passe ne sont pas identiques."))
         } else {
             None
         }
@@ -386,44 +386,46 @@ pub fn export_dialog(ui: &mut Ui, p: &Palette, form: &mut ExportForm, first_fram
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 form.job = None;
-                form.error = Some("L'export s'est interrompu.".to_owned());
+                form.error = Some(tr!("L'export s'est interrompu.").to_owned());
             }
         }
     }
     let busy = form.job.is_some();
 
-    title(ui, p, "Exporter les connexions");
+    title(ui, p, tr!("Exporter les connexions"));
     ui.add(Label::new(muted(
         p,
-        "Un seul fichier, chiffré par un mot de passe, qui s'importe ici ou sur un autre ordinateur.",
+        tr!("Un seul fichier, chiffré par un mot de passe, qui s'importe ici ou sur un autre ordinateur."),
     )).wrap());
     ui.add_space(8.0);
 
     ui.add_enabled_ui(!busy, |ui| {
         export_list(ui, p, form);
         ui.add_space(8.0);
-        checkbox(ui, p, &mut form.include_secrets, "Inclure les mots de passe et les clés secrètes").on_hover_text(
-            "Lus dans le gestionnaire d'identifiants du système ;\nils ne quittent l'application que chiffrés.",
+        checkbox(ui, p, &mut form.include_secrets, tr!("Inclure les mots de passe et les clés secrètes")).on_hover_text(
+            tr!("Lus dans le gestionnaire d'identifiants du système ;\nils ne quittent l'application que chiffrés."),
         );
         if form.keys_chosen() {
-            checkbox(ui, p, &mut form.include_keys, "Inclure le contenu des fichiers de clé privée").on_hover_text(
-                "Les clés nommées par ces connexions sont copiées dans le fichier,\n\
-                 et recréées à l'import dans le dossier de l'application.",
+            checkbox(ui, p, &mut form.include_keys, tr!("Inclure le contenu des fichiers de clé privée")).on_hover_text(
+                tr!(
+                    "Les clés nommées par ces connexions sont copiées dans le fichier,\n\
+                     et recréées à l'import dans le dossier de l'application."
+                ),
             );
         }
         ui.add_space(10.0);
         let mut reveal = form.reveal;
-        password_field(ui, p, "Mot de passe du fichier", &mut form.password, &mut reveal, first_frame);
+        password_field(ui, p, tr!("Mot de passe du fichier"), &mut form.password, &mut reveal, first_frame);
         strength_meter(ui, p, &form.password);
         ui.add_space(4.0);
-        password_field(ui, p, "Confirmer le mot de passe", &mut form.confirm, &mut reveal, false);
+        password_field(ui, p, tr!("Confirmer le mot de passe"), &mut form.confirm, &mut reveal, false);
         form.reveal = reveal;
         if !form.confirm.is_empty() && form.confirm != form.password {
-            ui.label(RichText::new("Les deux mots de passe ne sont pas identiques.").size(12.0).color(p.danger));
+            ui.label(RichText::new(tr!("Les deux mots de passe ne sont pas identiques.")).size(12.0).color(p.danger));
         }
         ui.label(small(
             p,
-            "Sans ce mot de passe, le fichier ne peut pas être ouvert : notez-le en lieu sûr.",
+            tr!("Sans ce mot de passe, le fichier ne peut pas être ouvert : notez-le en lieu sûr."),
         ));
     });
 
@@ -434,7 +436,7 @@ pub fn export_dialog(ui: &mut Ui, p: &Palette, form: &mut ExportForm, first_fram
     ui.add_space(12.0);
     let ready = form.problem().is_none() && !busy;
     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-        let button = primary_button(ui, p, &format!("{}  Exporter…", icon::EXPORT), ready);
+        let button = primary_button(ui, p, &format!("{}  {}", icon::EXPORT, tr!("Exporter…")), ready);
         let button = match form.problem() {
             Some(problem) if !busy => button.on_disabled_hover_text(problem),
             _ => button,
@@ -442,11 +444,11 @@ pub fn export_dialog(ui: &mut Ui, p: &Palette, form: &mut ExportForm, first_fram
         if button.clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.add_enabled(!busy, egui::Button::new("Annuler")).clicked() {
+        if ui.add_enabled(!busy, egui::Button::new(tr!("Annuler"))).clicked() {
             *outcome = Outcome::Cancelled;
         }
         if busy {
-            working(ui, p, "Chiffrement…");
+            working(ui, p, tr!("Chiffrement…"));
         }
     });
 }
@@ -468,7 +470,7 @@ fn export_list(ui: &mut Ui, p: &Palette, form: &mut ExportForm) {
         ui.painter().text(
             pos2(rect.left() + 30.0, rect.center().y),
             Align2::LEFT_CENTER,
-            "Tout",
+            trc!("connexions", "Tout"),
             FontId::proportional(14.0),
             p.text,
         );
@@ -480,7 +482,7 @@ fn export_list(ui: &mut Ui, p: &Palette, form: &mut ExportForm) {
             }
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(small(p, format!("{count} sur {}", format::count(total, "connexion", "connexions"))));
+            ui.label(small(p, trn!(total, "{count} sur {n} connexion", "{count} sur {n} connexions", count)));
         });
     });
 
@@ -607,13 +609,13 @@ pub fn unlock_dialog(ui: &mut Ui, p: &Palette, form: &mut UnlockForm, first_fram
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 form.job = None;
-                form.error = Some("Le déchiffrement s'est interrompu.".to_owned());
+                form.error = Some(tr!("Le déchiffrement s'est interrompu.").to_owned());
             }
         }
     }
     let busy = form.job.is_some();
 
-    title(ui, p, "Ouvrir une sauvegarde chiffrée");
+    title(ui, p, tr!("Ouvrir une sauvegarde chiffrée"));
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::LOCK_KEY).size(18.0).color(p.accent));
         ui.add(Label::new(RichText::new(form.file_name()).color(p.text)).truncate());
@@ -622,7 +624,9 @@ pub fn unlock_dialog(ui: &mut Ui, p: &Palette, form: &mut UnlockForm, first_fram
     ui.add_space(8.0);
     let mut reveal = form.reveal;
     let field = ui
-        .add_enabled_ui(!busy, |ui| password_field(ui, p, "Mot de passe du fichier", &mut form.password, &mut reveal, first_frame))
+        .add_enabled_ui(!busy, |ui| {
+            password_field(ui, p, tr!("Mot de passe du fichier"), &mut form.password, &mut reveal, first_frame)
+        })
         .inner;
     form.reveal = reveal;
     if field.changed() {
@@ -632,7 +636,7 @@ pub fn unlock_dialog(ui: &mut Ui, p: &Palette, form: &mut UnlockForm, first_fram
     if let Some(error) = &form.error {
         ui.add(Label::new(RichText::new(error).size(12.5).color(p.danger)).wrap());
     } else {
-        ui.label(small(p, "Celui choisi au moment de l'export."));
+        ui.label(small(p, tr!("Celui choisi au moment de l'export.")));
     }
     ui.add_space(12.0);
     let ready = !form.password.is_empty() && !busy;
@@ -640,14 +644,14 @@ pub fn unlock_dialog(ui: &mut Ui, p: &Palette, form: &mut UnlockForm, first_fram
         *outcome = Outcome::Confirmed;
     }
     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-        if primary_button(ui, p, &format!("{}  Déverrouiller", icon::LOCK_OPEN), ready).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::LOCK_OPEN, tr!("Déverrouiller")), ready).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.add_enabled(!busy, egui::Button::new("Annuler")).clicked() {
+        if ui.add_enabled(!busy, egui::Button::new(tr!("Annuler"))).clicked() {
             *outcome = Outcome::Cancelled;
         }
         if busy {
-            working(ui, p, "Déchiffrement…");
+            working(ui, p, tr!("Déchiffrement…"));
         }
     });
 }
@@ -731,39 +735,39 @@ impl PreviewForm {
 
 fn exported_on(bundle: &Bundle) -> Option<String> {
     let date = chrono::DateTime::parse_from_rfc3339(&bundle.exported_at).ok()?;
-    Some(date.with_timezone(&chrono::Local).format("%d/%m/%Y à %H:%M").to_string())
+    Some(date.with_timezone(&chrono::Local).format(tr!("%d/%m/%Y à %H:%M")).to_string())
 }
 
 pub fn preview_dialog(ui: &mut Ui, p: &Palette, form: &mut PreviewForm, outcome: &mut Outcome) {
     ui.set_width(WIDTH + 60.0);
-    title(ui, p, "Importer la sauvegarde");
+    title(ui, p, tr!("Importer la sauvegarde"));
     let mut about = vec![form.name.clone()];
     if let Some(date) = exported_on(&form.bundle) {
-        about.push(format!("exportée le {date}"));
+        about.push(tr!("exportée le {date}", date));
     }
-    about.push(format::count(form.bundle.profiles.len(), "connexion", "connexions"));
+    about.push(trn!(form.bundle.profiles.len(), "{n} connexion", "{n} connexions"));
     if !form.bundle.secrets.is_empty() {
-        about.push(format::count(form.bundle.secrets.len(), "mot de passe", "mots de passe"));
+        about.push(trn!(form.bundle.secrets.len(), "{n} mot de passe", "{n} mots de passe"));
     }
     if !form.bundle.keys.is_empty() {
-        about.push(format::count(form.bundle.keys.len(), "clé privée", "clés privées"));
+        about.push(trn!(form.bundle.keys.len(), "{n} clé privée", "{n} clés privées"));
     }
     ui.add(Label::new(muted(p, about.join(" · "))).truncate());
     ui.add_space(8.0);
 
     let selected = form.items.iter().filter(|item| item.selected).count();
     ui.horizontal(|ui| {
-        ui.label(small(p, format!("{selected} sur {} cochées", form.items.len())));
+        ui.label(small(p, tr!("{selected} sur {total} cochées", selected, total = form.items.len())));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let link = |ui: &mut Ui, text: &str| {
                 ui.add(Label::new(RichText::new(text).size(12.5).color(p.accent)).sense(Sense::click()))
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .clicked()
             };
-            if link(ui, "Tout décocher") {
+            if link(ui, tr!("Tout décocher")) {
                 form.items.iter_mut().for_each(|item| item.selected = false);
             }
-            if link(ui, "Tout cocher") {
+            if link(ui, tr!("Tout cocher")) {
                 form.items.iter_mut().for_each(|item| item.selected = true);
             }
         });
@@ -789,34 +793,31 @@ pub fn preview_dialog(ui: &mut Ui, p: &Palette, form: &mut PreviewForm, outcome:
     if duplicates > 0 {
         ui.horizontal(|ui| {
             ui.label(RichText::new(icon::WARNING).color(p.folder));
-            ui.label(RichText::new(match duplicates {
-                1 => "1 connexion est déjà dans la liste :".to_owned(),
-                _ => format!("{duplicates} connexions sont déjà dans la liste :"),
-            }).color(p.text));
+            ui.label(RichText::new(trn!(
+                duplicates,
+                "{n} connexion est déjà dans la liste :",
+                "{n} connexions sont déjà dans la liste :"
+            )).color(p.text));
         });
         merge_choice(ui, p, &mut form.merge);
         ui.add_space(6.0);
     }
     if !form.bundle.secrets.is_empty() {
-        let label = format!(
-            "Importer les mots de passe ({})",
-            form.bundle.secrets.len()
-        );
+        let label = tr!("Importer les mots de passe ({count})", count = form.bundle.secrets.len());
         checkbox(ui, p, &mut form.with_secrets, label)
-            .on_hover_text("Rangés dans le gestionnaire d'identifiants du système.");
+            .on_hover_text(tr!("Rangés dans le gestionnaire d'identifiants du système."));
     }
     ui.add_space(12.0);
     let count = form.effective();
     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
         let label = match count {
-            0 => "Importer".to_owned(),
-            1 => "Importer 1 connexion".to_owned(),
-            _ => format!("Importer {count} connexions"),
+            0 => tr!("Importer").to_owned(),
+            _ => trn!(count, "Importer {n} connexion", "Importer {n} connexions"),
         };
         if primary_button(ui, p, &label, count > 0).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -843,7 +844,7 @@ fn preview_rows(ui: &mut Ui, p: &Palette, form: &mut PreviewForm) {
                 on if on == members.len() => Tick::On,
                 _ => Tick::Partly,
             };
-            let title = if folder.is_empty() { "Sans dossier".to_owned() } else { folder.clone() };
+            let title = if folder.is_empty() { tr!("Sans dossier").to_owned() } else { folder.clone() };
             let line_ = Line {
                 depth: 0,
                 tick,
@@ -862,16 +863,18 @@ fn preview_rows(ui: &mut Ui, p: &Palette, form: &mut PreviewForm) {
 
         let mut detail = profile.summary();
         if form.bundle.secrets.contains_key(&profile.id) {
-            detail.push_str(" · mot de passe");
+            detail.push_str(" · ");
+            detail.push_str(tr!("mot de passe"));
         }
         if form.bundle.keys.contains_key(&profile.id) {
-            detail.push_str(" · clé");
+            detail.push_str(" · ");
+            detail.push_str(tr!("clé"));
         }
         if let Some(name) = &item.duplicate {
             detail = if name == profile.title() {
-                "déjà dans la liste".to_owned()
+                tr!("déjà dans la liste").to_owned()
             } else {
-                format!("déjà dans la liste : « {name} »")
+                tr!("déjà dans la liste : « {name} »", name)
             };
         }
         let color = profile.color.map(|color| color.rgb(p.dark));
@@ -904,9 +907,13 @@ fn preview_rows(ui: &mut Ui, p: &Palette, form: &mut PreviewForm) {
 /// Three buttons side by side, one lit.
 fn merge_choice(ui: &mut Ui, p: &Palette, merge: &mut Merge) {
     let choices = [
-        (Merge::Skip, "Les ignorer", "Celles de la liste restent telles quelles."),
-        (Merge::Replace, "Les remplacer", "Celles du fichier prennent leur place, avec leurs réglages."),
-        (Merge::KeepBoth, "Garder les deux", "Celles du fichier s'ajoutent, renommées si besoin."),
+        (Merge::Skip, tr!("Les ignorer"), tr!("Celles de la liste restent telles quelles.")),
+        (
+            Merge::Replace,
+            tr!("Les remplacer"),
+            tr!("Celles du fichier prennent leur place, avec leurs réglages."),
+        ),
+        (Merge::KeepBoth, tr!("Garder les deux"), tr!("Celles du fichier s'ajoutent, renommées si besoin.")),
     ];
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;

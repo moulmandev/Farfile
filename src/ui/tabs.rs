@@ -164,6 +164,8 @@ fn tab_button(
 
         let glyph = if tab.panes == Panes::Terminal {
             icon::TERMINAL_WINDOW
+        } else if tab.panes == Panes::Monitor {
+            icon::GAUGE
         } else {
             protocol_icon(tab.protocol)
         };
@@ -196,7 +198,7 @@ fn tab_button(
                     if close.hovered() { p.text } else { p.muted },
                 );
             }
-            if close.on_hover_text("Fermer l'onglet (Ctrl+W)").clicked() {
+            if close.on_hover_text(tr!("Fermer l'onglet (Ctrl+W)")).clicked() {
                 actions.push(Action::CloseTab(place.index));
             }
         } else if dirty {
@@ -270,41 +272,43 @@ fn tab_menu(ui: &mut Ui, p: &Palette, bar: &Bar<'_>, tab: &Tab, place: &Placed, 
     let id = tab.id;
     let (before, after) = (place.position, place.count - place.position - 1);
 
-    if item(ui, true, format!("{}  Fermer", icon::X), "Ctrl+W") {
+    if item(ui, true, format!("{}  {}", icon::X, tr!("Fermer")), tr!("Ctrl+W")) {
         actions.push(Action::CloseTabs(id, Closing::Only));
     }
-    if item(ui, place.count > 1, "Fermer les autres", "") {
+    if item(ui, place.count > 1, tr!("Fermer les autres"), "") {
         actions.push(Action::CloseTabs(id, Closing::Others));
     }
-    if item(ui, before > 0, "Fermer les onglets à gauche", "") {
+    if item(ui, before > 0, tr!("Fermer les onglets à gauche"), "") {
         actions.push(Action::CloseTabs(id, Closing::Left));
     }
-    if item(ui, after > 0, "Fermer les onglets à droite", "") {
+    if item(ui, after > 0, tr!("Fermer les onglets à droite"), "") {
         actions.push(Action::CloseTabs(id, Closing::Right));
     }
-    let all = if bar.split { "Fermer tous ceux de cette vue" } else { "Fermer tout" };
+    let all = if bar.split { tr!("Fermer tous ceux de cette vue") } else { tr!("Fermer tout") };
     if item(ui, true, all, "") {
         actions.push(Action::CloseTabs(id, Closing::All));
     }
-    if item(ui, bar.can_reopen, format!("{}  Rouvrir l'onglet fermé", icon::ARROW_U_UP_LEFT), "Ctrl+Maj+T") {
+    let reopen = format!("{}  {}", icon::ARROW_U_UP_LEFT, tr!("Rouvrir l'onglet fermé"));
+    if item(ui, bar.can_reopen, reopen, tr!("Ctrl+Maj+T")) {
         actions.push(Action::ReopenTab);
     }
     ui.separator();
 
     // Sending the only tab to a new view would leave this one empty.
     if !bar.split {
-        if item(ui, place.count > 1, format!("{}  Ouvrir dans une vue à droite", icon::SQUARE_SPLIT_HORIZONTAL), "") {
+        let right = format!("{}  {}", icon::SQUARE_SPLIT_HORIZONTAL, tr!("Ouvrir dans une vue à droite"));
+        if item(ui, place.count > 1, right, "") {
             actions.push(Action::MoveTab(id, TabPlace::View(Side::Right)));
         }
     } else {
         let (text, side) = match tab.side {
-            Side::Left => (format!("{}  Déplacer vers la vue de droite", icon::ARROW_LINE_RIGHT), Side::Right),
-            Side::Right => (format!("{}  Déplacer vers la vue de gauche", icon::ARROW_LINE_LEFT), Side::Left),
+            Side::Left => (format!("{}  {}", icon::ARROW_LINE_RIGHT, tr!("Déplacer vers la vue de droite")), Side::Right),
+            Side::Right => (format!("{}  {}", icon::ARROW_LINE_LEFT, tr!("Déplacer vers la vue de gauche")), Side::Left),
         };
         if item(ui, true, text, "") {
             actions.push(Action::MoveTab(id, TabPlace::View(side)));
         }
-        if item(ui, true, "Tout regrouper dans une seule vue", "") {
+        if item(ui, true, tr!("Tout regrouper dans une seule vue"), "") {
             actions.push(Action::JoinViews);
         }
     }
@@ -313,37 +317,41 @@ fn tab_menu(ui: &mut Ui, p: &Palette, bar: &Bar<'_>, tab: &Tab, place: &Placed, 
     if !file {
         super::local::tab_menu_item(ui, tab, actions);
     }
-    if item(ui, before > 0, "Placer en premier", "") {
+    if item(ui, before > 0, tr!("Placer en premier"), "") {
         actions.push(Action::MoveTab(id, TabPlace::First));
     }
-    if item(ui, after > 0, "Placer en dernier", "") {
+    if item(ui, after > 0, tr!("Placer en dernier"), "") {
         actions.push(Action::MoveTab(id, TabPlace::Last));
+    }
+    // The dashboard is no connection either: only its place and closing.
+    if tab.panes == Panes::Monitor {
+        return;
     }
     ui.separator();
 
     if file {
         super::editor::tab_menu(ui, tab, actions);
         ui.separator();
-        if item(ui, true, format!("{}  Copier l'adresse", icon::COPY_SIMPLE), "") {
+        if item(ui, true, format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier l'adresse")), "") {
             actions.push(Action::CopyTabAddress(id));
         }
         return;
     }
-    if item(ui, true, format!("{}  Dupliquer", icon::COPY), "") {
+    if item(ui, true, format!("{}  {}", icon::COPY, tr!("Dupliquer")), "") {
         actions.push(Action::DuplicateTab(id));
     }
-    if item(ui, true, format!("{}  Renommer…", icon::PENCIL_SIMPLE), "") {
+    if item(ui, true, format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Renommer…")), "") {
         actions.push(Action::AskRenameTab(id));
     }
-    if item(ui, true, format!("{}  Reconnecter", icon::ARROWS_CLOCKWISE), "") {
+    if item(ui, true, format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Reconnecter")), "") {
         actions.push(Action::ReconnectTab(id));
     }
     if tab.has_shell() {
-        ui.menu_button(format!("{}  Afficher", icon::LAYOUT), |ui| {
+        ui.menu_button(format!("{}  {}", icon::LAYOUT, tr!("Afficher")), |ui| {
             let choices = [
-                (Panes::Files, "Les fichiers"),
-                (Panes::Both, "Les fichiers et le terminal"),
-                (Panes::Terminal, "Le terminal"),
+                (Panes::Files, tr!("Les fichiers")),
+                (Panes::Both, tr!("Les fichiers et le terminal")),
+                (Panes::Terminal, tr!("Le terminal")),
             ];
             for (panes, label) in choices {
                 let mark = if tab.panes == panes { icon::CHECK } else { "    " };
@@ -360,13 +368,13 @@ fn tab_menu(ui: &mut Ui, p: &Palette, bar: &Bar<'_>, tab: &Tab, place: &Placed, 
     super::tunnels::tab_menu(ui, tab, actions);
     ui.separator();
 
-    if item(ui, true, format!("{}  Copier l'adresse", icon::COPY_SIMPLE), "") {
+    if item(ui, true, format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier l'adresse")), "") {
         actions.push(Action::CopyTabAddress(id));
     }
     super::hosts::tab_menu(ui, p, &tab.profile_id, actions);
     // This computer is not a saved connection.
     if tab.protocol != Protocol::Local
-        && item(ui, true, RichText::new(format!("{}  Modifier la connexion…", icon::GEAR)).color(p.text), "")
+        && item(ui, true, RichText::new(format!("{}  {}", icon::GEAR, tr!("Modifier la connexion…"))).color(p.text), "")
     {
         actions.push(Action::EditProfile(tab.profile_id.clone()));
     }
@@ -375,13 +383,14 @@ fn tab_menu(ui: &mut Ui, p: &Palette, bar: &Bar<'_>, tab: &Tab, place: &Placed, 
 /// The menu of the empty part of the row.
 fn row_menu(ui: &mut Ui, bar: &Bar<'_>, first: Option<u64>, actions: &mut Vec<Action>) {
     ui.set_min_width(230.0);
-    if item(ui, bar.can_reopen, format!("{}  Rouvrir l'onglet fermé", icon::ARROW_U_UP_LEFT), "Ctrl+Maj+T") {
+    let reopen = format!("{}  {}", icon::ARROW_U_UP_LEFT, tr!("Rouvrir l'onglet fermé"));
+    if item(ui, bar.can_reopen, reopen, tr!("Ctrl+Maj+T")) {
         actions.push(Action::ReopenTab);
     }
-    if bar.split && item(ui, true, "Tout regrouper dans une seule vue", "") {
+    if bar.split && item(ui, true, tr!("Tout regrouper dans une seule vue"), "") {
         actions.push(Action::JoinViews);
     }
-    let all = if bar.split { "Fermer tous ceux de cette vue" } else { "Fermer tout" };
+    let all = if bar.split { tr!("Fermer tous ceux de cette vue") } else { tr!("Fermer tout") };
     if let Some(first) = first
         && item(ui, true, all, "")
     {
@@ -396,9 +405,9 @@ fn panes_switch(ui: &mut Ui, p: &Palette, current: Panes, actions: &mut Vec<Acti
     ui.painter().rect_filled(rect, RADIUS, p.surface);
 
     let choices = [
-        (Panes::Files, icon::FOLDER, "Fichiers"),
-        (Panes::Both, icon::SQUARE_SPLIT_VERTICAL, "Fichiers et terminal"),
-        (Panes::Terminal, icon::TERMINAL_WINDOW, "Terminal"),
+        (Panes::Files, icon::FOLDER, tr!("Fichiers")),
+        (Panes::Both, icon::SQUARE_SPLIT_VERTICAL, tr!("Fichiers et terminal")),
+        (Panes::Terminal, icon::TERMINAL_WINDOW, tr!("Terminal")),
     ];
     let cell = rect.width() / choices.len() as f32;
     for (index, (panes, glyph, tooltip)) in choices.into_iter().enumerate() {

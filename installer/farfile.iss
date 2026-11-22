@@ -58,6 +58,8 @@ ShowLanguageDialog=auto
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -69,6 +71,11 @@ Source: "farfile-installed"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\Farfile"; Filename: "{app}\farfile.exe"
 Name: "{autodesktop}\Farfile"; Filename: "{app}\farfile.exe"; Tasks: desktopicon
+
+[Registry]
+; Written by Farfile the first time it shows a notification of Windows (its
+; name and icon there, see src/monitor/notify.rs): taken away with it.
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Farfile"; Flags: uninsdeletekey dontcreatekey
 
 [Run]
 ; After installing by hand: offer to start it.

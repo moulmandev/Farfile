@@ -98,8 +98,8 @@ fn key_field(ui: &mut Ui, p: &Palette, label: &str, path: &mut String, hint: &st
                 .desired_width(width - BROWSE - ui.spacing().item_spacing.x)
                 .margin(Margin::symmetric(10, 7)),
         );
-        if ui.add_sized([BROWSE, 30.0], Button::new("Parcourir…")).clicked() && !crate::dev::active() {
-            let mut dialog = rfd::FileDialog::new().set_title("Clé privée SSH");
+        if ui.add_sized([BROWSE, 30.0], Button::new(tr!("Parcourir…"))).clicked() && !crate::dev::active() {
+            let mut dialog = rfd::FileDialog::new().set_title(tr!("Clé privée SSH"));
             if let Some(home) = directories::UserDirs::new() {
                 dialog = dialog.set_directory(home.home_dir().join(".ssh"));
             }
@@ -147,7 +147,7 @@ fn public_key_line(ui: &mut Ui, p: &Palette, path: &str, public: &Result<String,
                         .on_hover_text(path);
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    copy = ui.button(format!("{}  Copier la clé publique", icon::COPY_SIMPLE)).clicked();
+                    copy = ui.button(format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier la clé publique"))).clicked();
                 });
             });
             let fingerprint = format!("{} · {}", keys::kind(line), keys::fingerprint(line).unwrap_or_default());
@@ -187,7 +187,7 @@ pub fn credentials(ui: &mut Ui, p: &Palette, form: &mut ProfileForm) {
     let gap = ui.spacing().item_spacing.x;
     let half = (WIDTH - gap) / 2.0;
     let is_new = form.is_new;
-    let keep = |otherwise: &'static str| if is_new { otherwise } else { "Laisser vide pour ne pas changer" };
+    let keep = |otherwise: &'static str| if is_new { otherwise } else { tr!("Laisser vide pour ne pas changer") };
     let ProfileForm { draft, secret, ssh, .. } = form;
     let identity = ssh.identities.iter().find(|identity| identity.id == draft.identity).cloned();
 
@@ -195,23 +195,24 @@ pub fn credentials(ui: &mut Ui, p: &Palette, form: &mut ProfileForm) {
         match identity.as_ref().map(|identity| identity.user.trim()).filter(|user| !user.is_empty()) {
             Some(user) => {
                 let mut shown = user.to_owned();
-                field(ui, p, "Utilisateur (de l'identité)", TextEdit::singleline(&mut shown).interactive(false), half, false);
+                let label = tr!("Utilisateur (de l'identité)");
+                field(ui, p, label, TextEdit::singleline(&mut shown).interactive(false), half, false);
             }
             None => {
-                field(ui, p, "Utilisateur", TextEdit::singleline(&mut draft.user), half, false);
+                field(ui, p, tr!("Utilisateur"), TextEdit::singleline(&mut draft.user), half, false);
             }
         }
         ui.vertical(|ui| {
-            ui.label(small(p, "Identité du trousseau"));
+            ui.label(small(p, tr!("Identité du trousseau")));
             let (text, color) = match &identity {
                 Some(identity) => (format!("{}  {}", icon::IDENTIFICATION_BADGE, identity.title()), p.text),
-                None if !draft.identity.is_empty() => ("Identité supprimée".to_owned(), p.danger),
-                None => ("Aucune".to_owned(), p.muted),
+                None if !draft.identity.is_empty() => (tr!("Identité supprimée").to_owned(), p.danger),
+                None => (tr!("Aucune").to_owned(), p.muted),
             };
             let pick = picker(ui, p, half, &text, color);
             Popup::menu(&pick).show(|ui| {
                 ui.set_min_width(half);
-                if menu_item(ui, RichText::new("Aucune : les champs de la connexion").color(p.muted)) {
+                if menu_item(ui, RichText::new(tr!("Aucune : les champs de la connexion")).color(p.muted)) {
                     draft.identity.clear();
                 }
                 ScrollArea::vertical().max_height(LIST_HEIGHT).show(ui, |ui| {
@@ -225,15 +226,18 @@ pub fn credentials(ui: &mut Ui, p: &Palette, form: &mut ProfileForm) {
                     }
                 });
                 ui.separator();
-                if menu_item(ui, format!("{}  Nouvelle identité…", icon::PLUS)) {
+                if menu_item(ui, format!("{}  {}", icon::PLUS, tr!("Nouvelle identité…"))) {
                     ssh.request = Some(FormRequest::NewIdentity);
                 }
                 if let Some(identity) = &identity
-                    && menu_item(ui, format!("{}  Modifier « {} »…", icon::PENCIL_SIMPLE, identity.title()))
+                    && menu_item(
+                        ui,
+                        format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Modifier « {name} »…", name = identity.title())),
+                    )
                 {
                     ssh.request = Some(FormRequest::EditIdentity(identity.id.clone()));
                 }
-                if menu_item(ui, format!("{}  Gérer le trousseau…", icon::KEY)) {
+                if menu_item(ui, format!("{}  {}", icon::KEY, tr!("Gérer le trousseau…"))) {
                     ssh.request = Some(FormRequest::Keychain);
                 }
             });
@@ -241,65 +245,72 @@ pub fn credentials(ui: &mut Ui, p: &Palette, form: &mut ProfileForm) {
     });
     ui.add_space(6.0);
 
-    ui.label(small(p, "Authentification"));
+    ui.label(small(p, tr!("Authentification")));
     method_switch(ui, p, &mut draft.auth);
     ui.add(Label::new(small(p, draft.auth.hint())).wrap());
     ui.add_space(8.0);
 
     match &identity {
         Some(identity) => {
-            let mut line = format!("{}  L'identité « {} » fournit : {}", icon::IDENTIFICATION_BADGE, identity.title(), identity.summary());
-            if draft.auth == AuthMethod::Agent {
-                line = format!("{}  L'identité « {} » fournit l'utilisateur ; les clés viennent de l'agent.", icon::IDENTIFICATION_BADGE, identity.title());
-            }
+            let (name, summary) = (identity.title(), identity.summary());
+            let said = if draft.auth == AuthMethod::Agent {
+                tr!("L'identité « {name} » fournit l'utilisateur ; les clés viennent de l'agent.", name)
+            } else {
+                tr!("L'identité « {name} » fournit : {summary}", name, summary)
+            };
+            let line = format!("{}  {said}", icon::IDENTIFICATION_BADGE);
             ui.add(Label::new(small(p, line)).wrap());
             ui.add_space(8.0);
         }
         None => match draft.auth {
             AuthMethod::Agent => {}
             AuthMethod::Password => {
-                field(ui, p, "Mot de passe", TextEdit::singleline(secret).password(true).hint_text(keep("")), WIDTH, false);
+                let edit = TextEdit::singleline(secret).password(true).hint_text(keep(""));
+                field(ui, p, tr!("Mot de passe"), edit, WIDTH, false);
             }
             AuthMethod::Key => {
-                key_field(ui, p, "Clé privée", &mut draft.key_path, "Fichier de la clé (OpenSSH, PEM ou PuTTY)", WIDTH);
-                let hint = keep("Vide : demandée à la connexion si la clé en a une");
-                field(ui, p, "Phrase secrète de la clé", TextEdit::singleline(secret).password(true).hint_text(hint), WIDTH, false);
+                let hint = tr!("Fichier de la clé (OpenSSH, PEM ou PuTTY)");
+                key_field(ui, p, tr!("Clé privée"), &mut draft.key_path, hint, WIDTH);
+                let hint = keep(tr!("Vide : demandée à la connexion si la clé en a une"));
+                let edit = TextEdit::singleline(secret).password(true).hint_text(hint);
+                field(ui, p, tr!("Phrase secrète de la clé"), edit, WIDTH, false);
             }
             AuthMethod::Auto => {
                 let with_key = !draft.key_path.trim().is_empty();
                 let (label, hint) = if with_key {
-                    ("Phrase secrète de la clé", keep("Vide : demandée à la connexion si la clé en a une"))
+                    (tr!("Phrase secrète de la clé"), keep(tr!("Vide : demandée à la connexion si la clé en a une")))
                 } else {
-                    ("Mot de passe", keep(""))
+                    (tr!("Mot de passe"), keep(""))
                 };
                 field(ui, p, label, TextEdit::singleline(secret).password(true).hint_text(hint), WIDTH, false);
-                key_field(ui, p, "Clé privée (facultatif)", &mut draft.key_path, "Sinon : l'agent SSH, puis les clés de ~/.ssh", WIDTH);
+                let hint = tr!("Sinon : l'agent SSH, puis les clés de ~/.ssh");
+                key_field(ui, p, tr!("Clé privée (facultatif)"), &mut draft.key_path, hint, WIDTH);
             }
         },
     }
 
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
-            ui.label(small(p, "Passer par (rebond)"));
+            ui.label(small(p, tr!("Passer par (rebond)")));
             let chosen = ssh.jumps.iter().find(|(id, ..)| *id == draft.jump);
             let (text, color) = match chosen {
                 Some((_, name, _)) => (format!("{}  {name}", icon::FLOW_ARROW), p.text),
-                None if !draft.jump.is_empty() => ("Rebond indisponible".to_owned(), p.danger),
-                None => ("Connexion directe".to_owned(), p.muted),
+                None if !draft.jump.is_empty() => (tr!("Rebond indisponible").to_owned(), p.danger),
+                None => (tr!("Connexion directe").to_owned(), p.muted),
             };
             let hover = if chosen.is_none() && !draft.jump.is_empty() {
-                "Ce serveur de rebond n'existe plus, ou repasse par cette connexion :\nchoisissez-en un autre."
+                tr!("Ce serveur de rebond n'existe plus, ou repasse par cette connexion :\nchoisissez-en un autre.")
             } else {
-                "Comme ProxyJump : la connexion passe par ce serveur SSH,\nqui doit autoriser la redirection TCP."
+                tr!("Comme ProxyJump : la connexion passe par ce serveur SSH,\nqui doit autoriser la redirection TCP.")
             };
             let pick = picker(ui, p, half, &text, color).on_hover_text(hover);
             Popup::menu(&pick).show(|ui| {
                 ui.set_min_width(WIDTH);
-                if menu_item(ui, RichText::new("Connexion directe").color(p.muted)) {
+                if menu_item(ui, RichText::new(tr!("Connexion directe")).color(p.muted)) {
                     draft.jump.clear();
                 }
                 if ssh.jumps.is_empty() {
-                    ui.label(small(p, "Aucune autre connexion SSH enregistrée."));
+                    ui.label(small(p, tr!("Aucune autre connexion SSH enregistrée.")));
                 }
                 ScrollArea::vertical().max_height(LIST_HEIGHT).show(ui, |ui| {
                     for (id, name, address) in &ssh.jumps {
@@ -317,8 +328,8 @@ pub fn credentials(ui: &mut Ui, p: &Palette, form: &mut ProfileForm) {
         field(
             ui,
             p,
-            "Dossier de départ (facultatif)",
-            TextEdit::singleline(&mut draft.initial_path).hint_text("Dossier personnel"),
+            tr!("Dossier de départ (facultatif)"),
+            TextEdit::singleline(&mut draft.initial_path).hint_text(tr!("Dossier personnel")),
             half,
             false,
         );
@@ -414,7 +425,7 @@ impl IdentityForm {
         } else {
             let passphrase = (!self.passphrase.is_empty()).then_some(self.passphrase.as_str());
             let read = keys::public_line(std::path::Path::new(&path), passphrase).map_err(|_| {
-                "Clé introuvable ou illisible sans sa phrase secrète (et pas de .pub à côté).".to_owned()
+                tr!("Clé introuvable ou illisible sans sa phrase secrète (et pas de .pub à côté).").to_owned()
             });
             Some((path, read))
         };
@@ -567,21 +578,25 @@ pub fn show(ui: &mut Ui, p: &Palette, dialog: &mut AuthDialog, first_frame: bool
         AuthDialog::Generate(form) => generate_form(ui, p, form, first_frame, outcome),
         AuthDialog::DeleteIdentity { title, users, .. } => {
             ui.set_width(WIDTH);
-            self::title(ui, p, "Supprimer l'identité ?");
-            let mut text = format!("« {title} » sera retirée du trousseau, avec ses secrets.");
-            match users {
-                0 => {}
-                1 => text.push_str(" La connexion qui l'utilise reprendra ses propres identifiants."),
-                n => text.push_str(&format!(" Les {n} connexions qui l'utilisent reprendront leurs propres identifiants.")),
+            self::title(ui, p, tr!("Supprimer l'identité ?"));
+            let mut text = tr!("« {title} » sera retirée du trousseau, avec ses secrets.", title);
+            if *users > 0 {
+                text.push(' ');
+                text.push_str(&trn!(
+                    *users,
+                    "La connexion qui l'utilise reprendra ses propres identifiants.",
+                    "Les {n} connexions qui l'utilisent reprendront leurs propres identifiants."
+                ));
             }
-            text.push_str(" Le fichier de la clé n'est pas touché.");
+            text.push(' ');
+            text.push_str(tr!("Le fichier de la clé n'est pas touché."));
             ui.add(Label::new(muted(p, text)).wrap());
             ui.add_space(14.0);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if danger_button(ui, p, "Supprimer").clicked() {
+                if danger_button(ui, p, tr!("Supprimer")).clicked() {
                     *outcome = Outcome::Confirmed;
                 }
-                if ui.button("Annuler").clicked() {
+                if ui.button(tr!("Annuler")).clicked() {
                     *outcome = Outcome::Cancelled;
                 }
             });
@@ -595,17 +610,21 @@ fn keychain(ui: &mut Ui, p: &Palette, view: &mut KeychainView, outcome: &mut Out
     ui.set_width(LIST_WIDTH);
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::KEY).size(19.0).color(p.accent));
-        ui.label(RichText::new("Trousseau").font(semibold(17.0)).color(p.text));
+        ui.label(RichText::new(tr!("Trousseau")).font(semibold(17.0)).color(p.text));
     });
     ui.add_space(2.0);
-    ui.add(Label::new(muted(p, "Des identités réutilisables : un utilisateur avec son mot de passe et/ou sa clé, à choisir dans plusieurs connexions.")).wrap());
+    let about = tr!(
+        "Des identités réutilisables : un utilisateur avec son mot de passe et/ou sa clé, \
+         à choisir dans plusieurs connexions."
+    );
+    ui.add(Label::new(muted(p, about)).wrap());
     ui.add_space(10.0);
 
     if view.identities.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(10.0);
             ui.label(RichText::new(icon::IDENTIFICATION_CARD).size(34.0).color(p.faint));
-            ui.label(muted(p, "Aucune identité pour l'instant."));
+            ui.label(muted(p, tr!("Aucune identité pour l'instant.")));
             ui.add_space(10.0);
         });
     }
@@ -628,16 +647,16 @@ fn keychain(ui: &mut Ui, p: &Palette, view: &mut KeychainView, outcome: &mut Out
                             ui.add(Label::new(RichText::new(identity.title()).color(p.text)).truncate());
                             let mut line = identity.summary();
                             if users > 0 {
-                                line.push_str(&format!(" · {}", crate::format::count(users, "connexion", "connexions")));
+                                line.push_str(&format!(" · {}", trn!(users, "{n} connexion", "{n} connexions")));
                             }
                             ui.add(Label::new(RichText::new(line).size(11.5).color(p.muted)).truncate());
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
-                            if icon_button(ui, p, icon::TRASH, "Supprimer…", true).clicked() {
+                            if icon_button(ui, p, icon::TRASH, tr!("Supprimer…"), true).clicked() {
                                 view.request = Some(KeychainRequest::Delete(identity.id.clone()));
                             }
-                            if icon_button(ui, p, icon::PENCIL_SIMPLE, "Modifier…", true).clicked() {
+                            if icon_button(ui, p, icon::PENCIL_SIMPLE, tr!("Modifier…"), true).clicked() {
                                 view.request = Some(KeychainRequest::Edit(identity.id.clone()));
                             }
                         });
@@ -647,13 +666,16 @@ fn keychain(ui: &mut Ui, p: &Palette, view: &mut KeychainView, outcome: &mut Out
     });
 
     ui.add_space(10.0);
-    ui.label(small(p, "Les mots de passe et les phrases secrètes sont conservés dans le gestionnaire d'identifiants du système."));
+    let stored = tr!(
+        "Les mots de passe et les phrases secrètes sont conservés dans le gestionnaire d'identifiants du système."
+    );
+    ui.label(small(p, stored));
     ui.add_space(10.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if ui.button("Fermer").clicked() {
+        if ui.button(tr!("Fermer")).clicked() {
             *outcome = Outcome::Cancelled;
         }
-        if primary_button(ui, p, &format!("{}  Nouvelle identité", icon::PLUS), true).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::PLUS, tr!("Nouvelle identité")), true).clicked() {
             view.request = Some(KeychainRequest::New);
         }
     });
@@ -661,38 +683,45 @@ fn keychain(ui: &mut Ui, p: &Palette, view: &mut KeychainView, outcome: &mut Out
 
 fn identity_form(ui: &mut Ui, p: &Palette, form: &mut IdentityForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(WIDTH);
-    title(ui, p, if form.is_new { "Nouvelle identité" } else { "Modifier l'identité" });
+    title(ui, p, if form.is_new { tr!("Nouvelle identité") } else { tr!("Modifier l'identité") });
     let gap = ui.spacing().item_spacing.x;
     let half = (WIDTH - gap) / 2.0;
     let identity = &mut form.identity;
     ui.horizontal_top(|ui| {
-        field(ui, p, "Nom", TextEdit::singleline(&mut identity.name).hint_text("Déploiement, Admin…"), half, first_frame);
-        field(ui, p, "Utilisateur", TextEdit::singleline(&mut identity.user).hint_text("Celui de la connexion"), half, false);
+        let name = TextEdit::singleline(&mut identity.name).hint_text(tr!("Déploiement, Admin…"));
+        field(ui, p, tr!("Nom"), name, half, first_frame);
+        let user = TextEdit::singleline(&mut identity.user).hint_text(tr!("Celui de la connexion"));
+        field(ui, p, tr!("Utilisateur"), user, half, false);
     });
 
-    let keep = |stored: bool| if stored { "Enregistré : laisser vide pour ne pas changer" } else { "Facultatif" };
-    let password_hint = keep(identity.has_password && !form.forget_password);
-    field(ui, p, "Mot de passe", TextEdit::singleline(&mut form.password).password(true).hint_text(password_hint), WIDTH, false);
+    let kept = tr!("Enregistré : laisser vide pour ne pas changer");
+    let password_hint = if identity.has_password && !form.forget_password { kept } else { tr!("Facultatif") };
+    let edit = TextEdit::singleline(&mut form.password).password(true).hint_text(password_hint);
+    field(ui, p, tr!("Mot de passe"), edit, WIDTH, false);
     if identity.has_password && !form.is_new && form.password.is_empty() {
-        let text = if form.forget_password { "Le mot de passe sera oublié · Annuler" } else { "Oublier le mot de passe enregistré" };
+        let text = if form.forget_password {
+            tr!("Le mot de passe sera oublié · Annuler")
+        } else {
+            tr!("Oublier le mot de passe enregistré")
+        };
         if link(ui, p, text) {
             form.forget_password = !form.forget_password;
         }
         ui.add_space(4.0);
     }
 
-    ui.label(small(p, "Clé privée (facultatif)"));
+    ui.label(small(p, tr!("Clé privée (facultatif)")));
     ui.horizontal(|ui| {
         let generate = 96.0;
         let spacing = ui.spacing().item_spacing.x;
         ui.add(
             TextEdit::singleline(&mut identity.key_path)
-                .hint_text("Fichier de la clé")
+                .hint_text(tr!("Fichier de la clé"))
                 .desired_width(WIDTH - BROWSE - generate - 2.0 * spacing)
                 .margin(Margin::symmetric(10, 7)),
         );
-        if ui.add_sized([BROWSE, 30.0], Button::new("Parcourir…")).clicked() && !crate::dev::active() {
-            let mut dialog = rfd::FileDialog::new().set_title("Clé privée SSH");
+        if ui.add_sized([BROWSE, 30.0], Button::new(tr!("Parcourir…"))).clicked() && !crate::dev::active() {
+            let mut dialog = rfd::FileDialog::new().set_title(tr!("Clé privée SSH"));
             if let Some(home) = directories::UserDirs::new() {
                 dialog = dialog.set_directory(home.home_dir().join(".ssh"));
             }
@@ -701,8 +730,8 @@ fn identity_form(ui: &mut Ui, p: &Palette, form: &mut IdentityForm, first_frame:
             }
         }
         if ui
-            .add_sized([generate, 30.0], Button::new(format!("{}  Générer", icon::SPARKLE)))
-            .on_hover_text("Créer une nouvelle paire de clés Ed25519 ou RSA")
+            .add_sized([generate, 30.0], Button::new(format!("{}  {}", icon::SPARKLE, tr!("Générer"))))
+            .on_hover_text(tr!("Créer une nouvelle paire de clés Ed25519 ou RSA"))
             .clicked()
         {
             form.request = Some(IdentityRequest::Generate);
@@ -711,11 +740,19 @@ fn identity_form(ui: &mut Ui, p: &Palette, form: &mut IdentityForm, first_frame:
     ui.add_space(6.0);
 
     if !form.identity.key_path.trim().is_empty() {
-        let hint = keep(form.identity.has_passphrase && !form.forget_passphrase);
-        let hint = if hint == "Facultatif" { "Vide : demandée à la connexion si la clé en a une" } else { hint };
-        field(ui, p, "Phrase secrète de la clé", TextEdit::singleline(&mut form.passphrase).password(true).hint_text(hint), WIDTH, false);
+        let hint = if form.identity.has_passphrase && !form.forget_passphrase {
+            kept
+        } else {
+            tr!("Vide : demandée à la connexion si la clé en a une")
+        };
+        let edit = TextEdit::singleline(&mut form.passphrase).password(true).hint_text(hint);
+        field(ui, p, tr!("Phrase secrète de la clé"), edit, WIDTH, false);
         if form.identity.has_passphrase && !form.is_new && form.passphrase.is_empty() {
-            let text = if form.forget_passphrase { "La phrase secrète sera oubliée · Annuler" } else { "Oublier la phrase secrète enregistrée" };
+            let text = if form.forget_passphrase {
+                tr!("La phrase secrète sera oubliée · Annuler")
+            } else {
+                tr!("Oublier la phrase secrète enregistrée")
+            };
             if link(ui, p, text) {
                 form.forget_passphrase = !form.forget_passphrase;
             }
@@ -737,10 +774,10 @@ fn identity_form(ui: &mut Ui, p: &Palette, form: &mut IdentityForm, first_frame:
     let valid = !form.identity.title().is_empty()
         && (!form.identity.name.trim().is_empty() || !form.identity.user.trim().is_empty());
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Enregistrer", valid).clicked() {
+        if primary_button(ui, p, tr!("Enregistrer"), valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -748,9 +785,9 @@ fn identity_form(ui: &mut Ui, p: &Palette, form: &mut IdentityForm, first_frame:
 
 fn generate_form(ui: &mut Ui, p: &Palette, form: &mut GenerateForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(WIDTH);
-    title(ui, p, "Générer une paire de clés");
+    title(ui, p, tr!("Générer une paire de clés"));
     ui.add_enabled_ui(!form.busy, |ui| {
-        ui.label(small(p, "Type"));
+        ui.label(small(p, tr!("Type")));
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             for kind in KeyType::ALL {
@@ -772,14 +809,15 @@ fn generate_form(ui: &mut Ui, p: &Palette, form: &mut GenerateForm, first_frame:
         let gap = ui.spacing().item_spacing.x;
         let half = (WIDTH - gap) / 2.0;
         ui.horizontal_top(|ui| {
-            field(ui, p, "Phrase secrète", TextEdit::singleline(&mut form.passphrase).password(true).hint_text("Recommandée"), half, first_frame);
-            field(ui, p, "Confirmation", TextEdit::singleline(&mut form.confirm).password(true), half, false);
+            let passphrase = TextEdit::singleline(&mut form.passphrase).password(true).hint_text(tr!("Recommandée"));
+            field(ui, p, tr!("Phrase secrète"), passphrase, half, first_frame);
+            field(ui, p, tr!("Confirmation"), TextEdit::singleline(&mut form.confirm).password(true), half, false);
         });
         if form.passphrase != form.confirm && !form.confirm.is_empty() {
-            ui.label(RichText::new("Les deux phrases secrètes diffèrent.").size(12.0).color(p.danger));
+            ui.label(RichText::new(tr!("Les deux phrases secrètes diffèrent.")).size(12.0).color(p.danger));
             ui.add_space(4.0);
         }
-        ui.label(small(p, "Nom du fichier de la clé privée"));
+        ui.label(small(p, tr!("Nom du fichier de la clé privée")));
         ui.horizontal(|ui| {
             let name = ui.add(
                 TextEdit::singleline(&mut form.name)
@@ -789,10 +827,10 @@ fn generate_form(ui: &mut Ui, p: &Palette, form: &mut GenerateForm, first_frame:
             if name.changed() {
                 form.name_auto = false;
             }
-            let pick = ui.add_sized([BROWSE, 30.0], Button::new(format!("{}  Dossier…", icon::FOLDER)));
+            let pick = ui.add_sized([BROWSE, 30.0], Button::new(format!("{}  {}", icon::FOLDER, tr!("Dossier…"))));
             if pick.clicked() && !crate::dev::active() {
                 let picked = rfd::FileDialog::new()
-                    .set_title("Dossier de la nouvelle clé")
+                    .set_title(tr!("Dossier de la nouvelle clé"))
                     .set_directory(&form.folder)
                     .pick_folder();
                 if let Some(folder) = picked {
@@ -804,25 +842,25 @@ fn generate_form(ui: &mut Ui, p: &Palette, form: &mut GenerateForm, first_frame:
             }
         });
         let folder = form.folder.display().to_string();
-        ui.add(Label::new(small(p, format!("Dans {folder}, avec la clé publique (.pub) à côté."))).truncate())
-            .on_hover_text(folder);
+        let place = tr!("Dans {folder}, avec la clé publique (.pub) à côté.", folder);
+        ui.add(Label::new(small(p, place)).truncate()).on_hover_text(folder);
         ui.add_space(8.0);
-        field(ui, p, "Commentaire", TextEdit::singleline(&mut form.comment), WIDTH, false);
+        field(ui, p, tr!("Commentaire"), TextEdit::singleline(&mut form.comment), WIDTH, false);
     });
     if form.busy {
         ui.horizontal(|ui| {
             ui.add(egui::Spinner::new().size(14.0).color(p.accent));
-            ui.label(muted(p, "Génération de la clé…"));
+            ui.label(muted(p, tr!("Génération de la clé…")));
         });
     }
     error_line(ui, p, &form.error);
     ui.add_space(12.0);
     let enabled = form.valid() && !form.busy;
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, &format!("{}  Générer", icon::SPARKLE), enabled).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::SPARKLE, tr!("Générer")), enabled).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -832,12 +870,16 @@ fn passphrase_form(ui: &mut Ui, p: &Palette, form: &mut PassphraseForm, first_fr
     ui.set_width(WIDTH);
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::LOCK_KEY).size(19.0).color(p.accent));
-        ui.label(RichText::new("Phrase secrète de la clé").font(semibold(17.0)).color(p.text));
+        ui.label(RichText::new(tr!("Phrase secrète de la clé")).font(semibold(17.0)).color(p.text));
     });
     ui.add_space(4.0);
     let request = &form.request;
-    let who = if request.label.is_empty() { "La connexion".to_owned() } else { format!("« {} »", request.label) };
-    ui.add(Label::new(muted(p, format!("{who} se connecte avec cette clé, protégée par une phrase secrète :"))).wrap());
+    let asking = if request.label.is_empty() {
+        tr!("La connexion se connecte avec cette clé, protégée par une phrase secrète :").to_owned()
+    } else {
+        tr!("« {name} » se connecte avec cette clé, protégée par une phrase secrète :", name = request.label)
+    };
+    ui.add(Label::new(muted(p, asking)).wrap());
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::ARROW_BEND_DOWN_RIGHT).color(p.faint));
         ui.add(Label::new(RichText::new(request.key.display().to_string()).size(12.5).color(p.text)).truncate());
@@ -846,7 +888,7 @@ fn passphrase_form(ui: &mut Ui, p: &Palette, form: &mut PassphraseForm, first_fr
     let response = ui.add(
         TextEdit::singleline(&mut form.passphrase)
             .password(true)
-            .hint_text("Phrase secrète")
+            .hint_text(tr!("Phrase secrète"))
             .desired_width(WIDTH)
             .margin(Margin::symmetric(10, 7)),
     );
@@ -858,19 +900,20 @@ fn passphrase_form(ui: &mut Ui, p: &Palette, form: &mut PassphraseForm, first_fr
     }
     ui.add_space(6.0);
     if request.owner != crate::ssh_auth::Owner::Nobody {
-        checkbox(ui, p, &mut form.save, "L'enregistrer dans le gestionnaire d'identifiants");
+        checkbox(ui, p, &mut form.save, tr!("L'enregistrer dans le gestionnaire d'identifiants"));
     } else {
-        ui.label(small(p, "Elle est retenue jusqu'à la fermeture de l'application."));
+        ui.label(small(p, tr!("Elle est retenue jusqu'à la fermeture de l'application.")));
     }
     if !form.passphrase.is_empty() && response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
         *outcome = Outcome::Confirmed;
     }
     ui.add_space(12.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, &format!("{}  Déverrouiller", icon::LOCK_KEY_OPEN), !form.passphrase.is_empty()).clicked() {
+        let unlock = format!("{}  {}", icon::LOCK_KEY_OPEN, tr!("Déverrouiller"));
+        if primary_button(ui, p, &unlock, !form.passphrase.is_empty()).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -878,14 +921,15 @@ fn passphrase_form(ui: &mut Ui, p: &Palette, form: &mut PassphraseForm, first_fr
 
 fn install_form(ui: &mut Ui, p: &Palette, form: &mut InstallForm, outcome: &mut Outcome) {
     ui.set_width(WIDTH + 40.0);
-    title(ui, p, "Installer une clé sur ce serveur");
+    title(ui, p, tr!("Installer une clé sur ce serveur"));
     ui.add(
         Label::new(muted(
             p,
-            format!(
-                "La clé publique de l'identité choisie est ajoutée à ~/.ssh/authorized_keys de {} sur « {} ». \
+            tr!(
+                "La clé publique de l'identité choisie est ajoutée à ~/.ssh/authorized_keys de {account} sur « {title} ». \
                  Elle servira ensuite à se connecter sans mot de passe.",
-                form.account, form.title
+                account = form.account,
+                title = form.title
             ),
         ))
         .wrap(),
@@ -893,9 +937,10 @@ fn install_form(ui: &mut Ui, p: &Palette, form: &mut InstallForm, outcome: &mut 
     ui.add_space(10.0);
 
     if form.identities.is_empty() {
-        ui.add(Label::new(muted(p, "Aucune identité du trousseau n'a de clé.")).wrap());
+        ui.add(Label::new(muted(p, tr!("Aucune identité du trousseau n'a de clé."))).wrap());
         ui.add_space(6.0);
-        if primary_button(ui, p, &format!("{}  Nouvelle identité avec une clé…", icon::PLUS), true).clicked() {
+        let new = format!("{}  {}", icon::PLUS, tr!("Nouvelle identité avec une clé…"));
+        if primary_button(ui, p, &new, true).clicked() {
             form.request = Some(InstallRequest::NewIdentity);
         }
     }
@@ -931,9 +976,10 @@ fn install_form(ui: &mut Ui, p: &Palette, form: &mut InstallForm, outcome: &mut 
         if !form.identities.is_empty() {
             ui.add_space(6.0);
             if form.can_use() {
-                checkbox(ui, p, &mut form.use_it, "Se connecter ensuite à ce serveur avec cette identité");
+                checkbox(ui, p, &mut form.use_it, tr!("Se connecter ensuite à ce serveur avec cette identité"));
             } else if form.chosen().is_some() {
-                ui.add(Label::new(small(p, "Cette identité se connecte sous un autre nom : la connexion garde le sien.")).wrap());
+                let other = tr!("Cette identité se connecte sous un autre nom : la connexion garde le sien.");
+                ui.add(Label::new(small(p, other)).wrap());
             }
         }
     });
@@ -941,21 +987,21 @@ fn install_form(ui: &mut Ui, p: &Palette, form: &mut InstallForm, outcome: &mut 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add(egui::Spinner::new().size(14.0).color(p.accent));
-            ui.label(muted(p, "Installation de la clé…"));
+            ui.label(muted(p, tr!("Installation de la clé…")));
         });
     }
     error_line(ui, p, &form.error);
     ui.add_space(12.0);
     ui.horizontal(|ui| {
-        if link(ui, p, "Gérer le trousseau…") {
+        if link(ui, p, tr!("Gérer le trousseau…")) {
             form.request = Some(InstallRequest::Keychain);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let enabled = form.chosen().is_some() && !form.busy;
-            if primary_button(ui, p, &format!("{}  Installer", icon::UPLOAD_SIMPLE), enabled).clicked() {
+            if primary_button(ui, p, &format!("{}  {}", icon::UPLOAD_SIMPLE, tr!("Installer")), enabled).clicked() {
                 *outcome = Outcome::Confirmed;
             }
-            if ui.button("Annuler").clicked() {
+            if ui.button(tr!("Annuler")).clicked() {
                 *outcome = Outcome::Cancelled;
             }
         });
@@ -966,21 +1012,21 @@ fn install_form(ui: &mut Ui, p: &Palette, form: &mut InstallForm, outcome: &mut 
 
 /// The keychain button of the sidebar header.
 pub fn sidebar_button(ui: &mut Ui, p: &Palette, actions: &mut Vec<Action>) {
-    if icon_button(ui, p, icon::KEY, "Trousseau : identités et clés SSH", true).clicked() {
+    if icon_button(ui, p, icon::KEY, tr!("Trousseau : identités et clés SSH"), true).clicked() {
         actions.push(Action::SshAuth(SshAuthAction::OpenKeychain));
     }
 }
 
 /// In the menu of a saved SSH connection of the sidebar.
 pub fn host_menu_items(ui: &mut Ui, profile: &Profile, actions: &mut Vec<Action>) {
-    if menu_item(ui, format!("{}  Installer une clé sur ce serveur…", icon::KEY)) {
+    if menu_item(ui, format!("{}  {}", icon::KEY, tr!("Installer une clé sur ce serveur…"))) {
         actions.push(Action::SshAuth(SshAuthAction::AskInstallOnProfile(profile.id.clone())));
     }
 }
 
 /// In the menu of an SSH tab.
 pub fn tab_menu_items(ui: &mut Ui, tab: &crate::tabs::Tab, actions: &mut Vec<Action>) {
-    if menu_item(ui, format!("{}  Installer une clé sur ce serveur…", icon::KEY)) {
+    if menu_item(ui, format!("{}  {}", icon::KEY, tr!("Installer une clé sur ce serveur…"))) {
         actions.push(Action::SshAuth(SshAuthAction::AskInstallOnTab(tab.id)));
     }
 }

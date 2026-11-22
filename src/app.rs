@@ -10,6 +10,7 @@ mod viewers;
 mod local;
 mod editor;
 mod update;
+mod monitor;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -164,6 +165,9 @@ pub struct App {
 
     /// Looks for, downloads and installs newer releases.
     updater: crate::update::Updater,
+    /// The watched servers of the dashboard, their alerts, and the icon of
+    /// the notification area: see `app::monitor`.
+    monitor: monitor::MonitorState,
 }
 
 /// A file from another program, as a script plays it.
@@ -179,11 +183,13 @@ struct DevFiles {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = profiles::load_settings();
+        crate::i18n::set(dev::language().unwrap_or_else(|| crate::i18n::choose(settings.language.as_deref())));
         let palette = Palette::for_mode(settings.dark);
         theme::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, &palette);
 
         let (worker, events) = Worker::new(cc.egui_ctx.clone());
+        let monitor = monitor::MonitorState::new(&cc.egui_ctx, &settings.monitor);
         let mut app = Self {
             palette,
             settings,
@@ -225,8 +231,10 @@ impl App {
             file_ops: Default::default(),
             editor: Default::default(),
             updater: crate::update::Updater::new(),
+            monitor,
         };
         app.normalize_folders();
+        app.monitor_settings_for_scripts();
         app.open_dev_profiles();
         app.restore_tabs();
         app
@@ -300,6 +308,8 @@ impl App {
             "copyurl" => Action::CopyUrl(argument.to_owned()),
             "theme" => Action::ToggleTheme,
             "checkupdates" => Action::Update(crate::ui::update::UpdateAction::Check),
+            // `lang en`, or `lang` alone for the system's.
+            "lang" => Action::SetLanguage(crate::i18n::Lang::from_code(argument)),
             "transfers" => Action::ToggleTransfers,
             "clear" => Action::ClearFinishedTransfers,
             // Tabs: `connect 1`, `newtab 1 terminal`, `tab 0`, `closetab`.
@@ -590,7 +600,8 @@ impl App {
                     let storage = session.storage.clone();
                     let folder = PathBuf::from(argument);
                     if let Err(error) = os_drag::drop_into(&folder, self.worker.fetcher(), storage, items) {
-                        self.toast(now, format!("Dépôt impossible : {error:#}"), true);
+                        let error = format!("{error:#}");
+                        self.toast(now, tr!("Dépôt impossible : {error}", error), true);
                     }
                 }
                 return;
@@ -719,6 +730,9 @@ impl App {
             // The built-in editor: `edit notes.txt`, `etype`, `efind`,
             // `esave`… (see `dev_step_editor` in src/app/editor.rs).
             _ if self.dev_step_editor(verb, argument, ctx, now) => return,
+            // The dashboard: `monitor`, `watch NAME`, `monitorpick`,
+            // `monitoralert NAME disk / 92`… (see `dev_step_monitor`).
+            _ if self.dev_step_monitor(verb, argument, now) => return,
             // "wait" and anything unknown just let time pass.
             _ => return,
         };
@@ -764,7 +778,7 @@ impl App {
 
     fn report_save_error(&mut self, result: Result<()>, now: f64) {
         if let Err(error) = result {
-            self.toast(now, format!("Enregistrement impossible : {error:#}"), true);
+            self.toast(now, save_failed(&error), true);
         }
     }
 
@@ -852,6 +866,9 @@ impl App {
 
     /// Prepares a tab on a saved connection, without adding it.
     fn build_tab(&mut self, profile_id: &str, now: f64) -> Option<Tab> {
+        if crate::monitor::is_dashboard(profile_id) {
+            return Some(self.dashboard_tab());
+        }
         let profile = self.profiles.iter().find(|p| p.id == profile_id).cloned();
         // This computer is built in, not saved.
         let profile = profile.or_else(|| crate::local::entry(profile_id))?;
@@ -868,9 +885,9 @@ impl App {
                 Err(_) => {
                     self.toast(
                         now,
-                        format!(
-                            "Clé secrète introuvable pour « {} ». Modifiez la connexion pour la saisir à nouveau.",
-                            profile.title()
+                        tr!(
+                            "Clé secrète introuvable pour « {name} ». Modifiez la connexion pour la saisir à nouveau.",
+                            name = profile.title()
                         ),
                         true,
                     );
@@ -959,8 +976,8 @@ impl App {
         let Some(tab) = self.tabs.get_mut(index) else {
             return;
         };
-        // A file in the editor has no listing to refresh.
-        if tab.editor.is_some() {
+        // A file in the editor, or the dashboard, has no listing to refresh.
+        if tab.editor.is_some() || tab.panes == Panes::Monitor {
             tab.session.refresh_at = None;
             return;
         }
@@ -1003,7 +1020,7 @@ impl App {
                     if let Some(index) = self.tab_awaiting(generation)
                         && let Some(error) = self.tabs[index].session.list_failed(error)
                     {
-                        self.toast(now, format!("Actualisation impossible : {error}"), true);
+                        self.toast(now, tr!("Actualisation impossible : {error}", error), true);
                     }
                 }
                 Event::Home { generation, path } => {
@@ -1088,9 +1105,10 @@ impl App {
         if how == Launch::Default && launch::kind(name) == launch::Kind::Program {
             self.toast(
                 now,
-                format!(
+                tr!(
                     "« {name} » est un programme : par sécurité, il n'est pas lancé depuis un serveur. \
-                     Téléchargez-le, ou choisissez « Modifier » pour le lire comme du texte."
+                     Téléchargez-le, ou choisissez « Modifier » pour le lire comme du texte.",
+                    name
                 ),
                 true,
             );
@@ -1143,7 +1161,7 @@ impl App {
                     let local = edit.local.clone();
                     self.toast(
                         now,
-                        format!("« {name} » a des modifications non envoyées : c'est la copie locale qui s'ouvre."),
+                        tr!("« {name} » a des modifications non envoyées : c'est la copie locale qui s'ouvre.", name),
                         false,
                     );
                     self.launch(&local, how, now);
@@ -1166,7 +1184,8 @@ impl App {
 
     fn launch(&mut self, local: &Path, how: Launch, now: f64) {
         if let Err(error) = launch::start(local, how, &self.settings.editor) {
-            self.toast(now, format!("Ouverture impossible : {error:#}"), true);
+            let error = format!("{error:#}");
+            self.toast(now, tr!("Ouverture impossible : {error}", error), true);
         }
     }
 
@@ -1188,7 +1207,7 @@ impl App {
                 } else {
                     self.edits.forget(id);
                 }
-                self.toast(now, format!("Ouverture de « {name} » impossible : {error}"), true);
+                self.toast(now, tr!("Ouverture de « {name} » impossible : {error}", name, error), true);
             }
         }
     }
@@ -1243,14 +1262,14 @@ impl App {
         match error {
             None => {
                 edit.state = EditState::Synced;
-                self.toast(now, format!("« {name} » envoyé sur {origin}"), false);
+                self.toast(now, tr!("« {name} » envoyé sur {origin}", name, origin), false);
                 if saved_again {
                     self.edit_saved(id, ctx);
                 }
             }
             Some(error) => {
                 edit.state = EditState::Failed(error.clone());
-                self.toast(now, format!("Envoi de « {name} » impossible : {error}"), true);
+                self.toast(now, tr!("Envoi de « {name} » impossible : {error}", name, error), true);
             }
         }
     }
@@ -1283,6 +1302,10 @@ impl App {
     /// program and not sent.
     fn guard_close(&mut self, ctx: &egui::Context) {
         if self.quitting || !ctx.input(|input| input.viewport().close_requested()) {
+            return;
+        }
+        // Watching servers in the background, if the preferences say so.
+        if self.close_to_background(ctx) {
             return;
         }
         if self.ask_before_quitting(ctx) {
@@ -1480,7 +1503,7 @@ impl App {
                 ..
             }) => self.worker.upload(storage, dropped, folder),
             Some(target) => self.toast(now, format!("{}.", closed_to_files(&target)), true),
-            None => self.toast(now, "Affichez d'abord les fichiers d'une connexion.", true),
+            None => self.toast(now, format!("{}.", tr!("Affichez d'abord les fichiers d'une connexion")), true),
         }
     }
 
@@ -1609,9 +1632,9 @@ impl App {
                 match session.storage.plain_url(&session.path) {
                     Some(url) => {
                         ctx.copy_text(url);
-                        self.toast(now, "Adresse copiée", false);
+                        self.toast(now, tr!("Adresse copiée"), false);
                     }
-                    None => self.toast(now, "Ce stockage n'a pas d'adresse directe.", true),
+                    None => self.toast(now, tr!("Ce stockage n'a pas d'adresse directe."), true),
                 }
             }
             Action::SetPanes(panes) => {
@@ -1687,6 +1710,13 @@ impl App {
                 self.palette = Palette::for_mode(self.settings.dark);
                 theme::apply(ctx, &self.palette);
                 self.save_settings();
+            }
+
+            Action::SetLanguage(lang) => {
+                self.settings.language = lang.map(|lang| lang.code().to_owned());
+                crate::i18n::set(lang.unwrap_or_else(crate::i18n::system));
+                self.save_settings();
+                ctx.request_repaint();
             }
 
             Action::ToggleSidebar => {
@@ -1830,9 +1860,9 @@ impl App {
                 let picked = if let Some(source) = dev::upload_source() {
                     Some(vec![source])
                 } else if matches!(action, Action::UploadFiles) {
-                    dialog.set_title("Importer des fichiers").pick_files()
+                    dialog.set_title(tr!("Importer des fichiers")).pick_files()
                 } else {
-                    dialog.set_title("Importer un dossier").pick_folders()
+                    dialog.set_title(tr!("Importer un dossier")).pick_folders()
                 };
                 if let Some(sources) = picked.filter(|sources| !sources.is_empty()) {
                     self.worker
@@ -1866,11 +1896,12 @@ impl App {
                 if dev::active() {
                     // A script holds no button: the drop would land wherever
                     // the real pointer happens to be.
-                    self.toast(now, "Glisser hors de la fenêtre : ignoré pendant un script.", false);
+                    self.toast(now, tr!("Glisser hors de la fenêtre : ignoré pendant un script."), false);
                     return;
                 }
                 if let Err(error) = os_drag::drag_out(self.worker.fetcher(), storage, items) {
-                    self.toast(now, format!("Impossible de glisser ces fichiers : {error:#}"), true);
+                    let error = format!("{error:#}");
+                    self.toast(now, tr!("Impossible de glisser ces fichiers : {error}", error), true);
                 }
             }
             Action::DownloadSelection => {
@@ -1885,7 +1916,7 @@ impl App {
                     directories::UserDirs::new()
                         .and_then(|dirs| dirs.download_dir().map(PathBuf::from))
                 });
-                let mut dialog = rfd::FileDialog::new().set_title("Télécharger dans…");
+                let mut dialog = rfd::FileDialog::new().set_title(tr!("Télécharger dans…"));
                 if let Some(start) = start {
                     dialog = dialog.set_directory(start);
                 }
@@ -1909,16 +1940,17 @@ impl App {
                 }
                 let folders = items.iter().filter(|item| item.is_dir).count();
                 let summary = match (items.as_slice(), folders) {
-                    ([only], 0) => format!("« {} » sera supprimé.", only.path.name()),
-                    ([only], _) => format!(
-                        "Le dossier « {} » et tout son contenu seront supprimés.",
-                        only.path.name()
+                    ([only], 0) => tr!("« {name} » sera supprimé.", name = only.path.name()),
+                    ([only], _) => tr!(
+                        "Le dossier « {name} » et tout son contenu seront supprimés.",
+                        name = only.path.name()
                     ),
-                    (many, 0) => format!("{} éléments seront supprimés.", many.len()),
-                    (many, _) => format!(
-                        "{} éléments seront supprimés, dont {} avec tout leur contenu.",
-                        many.len(),
-                        format::count(folders, "dossier", "dossiers"),
+                    (many, 0) => tr!("{count} éléments seront supprimés.", count = many.len()),
+                    (many, _) => trn!(
+                        folders,
+                        "{count} éléments seront supprimés, dont {n} dossier avec tout leur contenu.",
+                        "{count} éléments seront supprimés, dont {n} dossiers avec tout leur contenu.",
+                        count = many.len(),
                     ),
                 };
                 let parent = session.path.clone();
@@ -1935,9 +1967,9 @@ impl App {
                 match session.storage.plain_url(&session.path.child(&name)) {
                     Some(url) => {
                         ctx.copy_text(url);
-                        self.toast(now, "Adresse copiée", false);
+                        self.toast(now, tr!("Adresse copiée"), false);
                     }
-                    None => self.toast(now, "Ce stockage n'a pas d'adresse directe.", true),
+                    None => self.toast(now, tr!("Ce stockage n'a pas d'adresse directe."), true),
                 }
             }
             Action::ShareLink(name) => self.share_link(&name),
@@ -1971,6 +2003,7 @@ impl App {
             Action::Transfers(action) => self.apply_transfer(action, ctx, now),
             Action::Editor(action) => self.apply_editor(action, ctx, now),
             Action::Update(action) => self.apply_update(action, ctx),
+            Action::Monitor(action) => self.apply_monitor(action, now),
         }
     }
 
@@ -2024,20 +2057,21 @@ impl App {
         }
 
         let mut text = match (imported, refiled) {
-            (0, 1) => "1 connexion rangée dans son dossier".to_owned(),
-            (0, _) => format!("{refiled} connexions rangées dans leur dossier"),
-            (1, 0) => "1 connexion importée".to_owned(),
-            (_, 0) => format!("{imported} connexions importées"),
-            _ => format!("{imported} importée(s), {refiled} rangée(s) dans leur dossier"),
+            (0, _) => trn!(refiled, "{n} connexion rangée dans son dossier", "{n} connexions rangées dans leur dossier"),
+            (_, 0) => trn!(imported, "{n} connexion importée", "{n} connexions importées"),
+            _ => tr!("{imported} importée(s), {refiled} rangée(s) dans leur dossier", imported, refiled),
         };
         let mut failed = false;
         if let Err(error) = self.persist_profiles() {
-            text = format!("Enregistrement impossible : {error:#}");
+            text = save_failed(&error);
             failed = true;
         } else if unsaved_secrets > 0 {
-            text.push_str(&format!(
-                " ; {unsaved_secrets} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir"
-            ));
+            text = trn!(
+                unsaved_secrets,
+                "{text} ; {n} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir",
+                "{text} ; {n} mot(s) de passe n'ont pas pu être enregistrés et seront à saisir",
+                text,
+            );
             failed = true;
         }
         self.toast(now, text, failed);
@@ -2173,10 +2207,14 @@ impl App {
             Outcome::Cancelled => {}
             Outcome::Confirmed | Outcome::ConfirmedAndConnect => match dialog {
                 Dialog::Profile(mut form) => match self.save_profile(&form) {
-                    Ok(id) if connect => self.open_tab(&id, None, now),
-                    Ok(_) => {}
+                    Ok(id) => {
+                        self.monitor_profile_saved(&id);
+                        if connect {
+                            self.open_tab(&id, None, now);
+                        }
+                    }
                     Err(error) => {
-                        form.error = Some(format!("Enregistrement impossible : {error:#}"));
+                        form.error = Some(save_failed(&error));
                         self.dialog = Some(Dialog::Profile(form));
                     }
                 },
@@ -2189,7 +2227,7 @@ impl App {
                         profiles::delete_secret(&id);
                     }
                     if let Err(error) = self.persist_profiles() {
-                        self.toast(now, format!("Enregistrement impossible : {error:#}"), true);
+                        self.toast(now, save_failed(&error), true);
                     }
                     // Files open in the editor keep their own connection:
                     // their changes are not lost with it.
@@ -2254,6 +2292,7 @@ impl App {
                 Dialog::Transfers(dialog) => self.answer_transfer_dialog(dialog, now),
                 Dialog::Editor(dialog) => self.answer_editor(dialog, ctx, now),
                 Dialog::Update(dialog) => self.answer_update(dialog, ctx, now),
+                Dialog::Monitor(dialog) => self.monitor_dialog_done(dialog),
             },
         }
     }
@@ -2275,7 +2314,7 @@ impl App {
                             text.push_str(&format!(" · {title}"));
                         }
                         if terminal.mouse_mode() != vt100::MouseProtocolMode::None {
-                            text.push_str(" · souris au programme, Maj pour sélectionner");
+                            text.push_str(&format!(" · {}", tr!("souris au programme, Maj pour sélectionner")));
                         }
                         ui.add(egui::Label::new(small(p, text)).truncate());
                     }
@@ -2295,11 +2334,11 @@ impl App {
                     format!(
                         "{}  {} · {}",
                         icon::ARROWS_DOWN_UP,
-                        format::count(active, "transfert", "transferts"),
+                        trn!(active, "{n} transfert", "{n} transferts"),
                         format::speed(speed)
                     )
                 } else {
-                    format!("{}  Transferts", icon::ARROWS_DOWN_UP)
+                    format!("{}  {}", icon::ARROWS_DOWN_UP, tr!("Transferts"))
                 };
                 let color = if active > 0 { p.accent } else { p.muted };
                 let button = egui::Button::new(RichText::new(label).size(12.0).color(color))
@@ -2332,15 +2371,20 @@ impl App {
         let rows = favorites.len().div_ceil(columns);
         let cards_height = rows as f32 * (CARD.y + GAP);
         let (title, hint) = if self.profiles.is_empty() {
-            ("Bienvenue", "Ajoutez une connexion S3, SFTP ou FTP pour commencer.")
+            (tr!("Bienvenue"), tr!("Ajoutez une connexion S3, SFTP ou FTP pour commencer."))
         } else if pinned == 0 {
             (
-                "Aucune connexion ouverte",
-                "Choisissez-en une dans la liste, ou tapez son nom avec Ctrl+K.\n\
-                 L'étoile d'une connexion l'épingle ici.",
+                tr!("Aucune connexion ouverte"),
+                tr!(
+                    "Choisissez-en une dans la liste, ou tapez son nom avec Ctrl+K.\n\
+                     L'étoile d'une connexion l'épingle ici."
+                ),
             )
         } else {
-            ("Aucune connexion ouverte", "Vos favoris, ou Ctrl+K pour ouvrir n'importe quelle connexion.")
+            (
+                tr!("Aucune connexion ouverte"),
+                tr!("Vos favoris, ou Ctrl+K pour ouvrir n'importe quelle connexion."),
+            )
         };
 
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -2378,20 +2422,21 @@ impl App {
                     let width: f32 = ui.data(|data| data.get_temp(id)).unwrap_or(0.0);
                     ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
                     let start = ui.cursor().left();
-                    if primary_button(ui, p, &format!("{}  Nouvelle connexion", icon::PLUS), true).clicked() {
+                    let new = format!("{}  {}", icon::PLUS, tr!("Nouvelle connexion"));
+                    if primary_button(ui, p, &new, true).clicked() {
                         actions.push(Action::NewProfile);
                     }
                     if !self.profiles.is_empty()
                         && ui
-                            .button(format!("{}  Rechercher…", icon::MAGNIFYING_GLASS))
-                            .on_hover_text("Ctrl+K")
+                            .button(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher…")))
+                            .on_hover_text(tr!("Ctrl+K"))
                             .clicked()
                     {
                         actions.push(Action::QuickOpen);
                     }
                     if ui
-                        .button(format!("{}  Importer…", icon::DOWNLOAD_SIMPLE))
-                        .on_hover_text("Depuis FileZilla, Windows Terminal ou ~/.ssh/config")
+                        .button(format!("{}  {}", icon::DOWNLOAD_SIMPLE, tr!("Importer…")))
+                        .on_hover_text(tr!("Depuis FileZilla, Windows Terminal ou ~/.ssh/config"))
                         .clicked()
                     {
                         actions.push(Action::AskImport);
@@ -2436,8 +2481,17 @@ impl App {
             incoming.in_use = self.views.focus == side;
         }
         if let Some(tab) = shown.and_then(|index| self.tabs.get_mut(index)) {
-            // Each tab keeps its own scroll positions and the like.
-            ui.push_id(tab.id, |ui| tab_content(ui, &p, tab, interactive, editor, incoming, actions));
+            if tab.panes == Panes::Monitor {
+                let dashboard = crate::ui::monitor::Dashboard {
+                    monitor: &self.monitor.monitor,
+                    settings: &self.settings.monitor,
+                    profiles: &self.profiles,
+                };
+                ui.push_id(tab.id, |ui| crate::ui::monitor::show(ui, &p, &dashboard, actions));
+            } else {
+                // Each tab keeps its own scroll positions and the like.
+                ui.push_id(tab.id, |ui| tab_content(ui, &p, tab, interactive, editor, incoming, actions));
+            }
         }
         self.viewers_overlay(ui, shown, content, actions);
 
@@ -2447,9 +2501,12 @@ impl App {
             let here = self.tabs.iter().filter(|tab| tab.side == side).count();
             let from_here = self.tabs.iter().any(|tab| tab.id == dragged.0 && tab.side == side);
             let zone = if split {
-                (!from_here).then_some((content, side, "Déplacer dans cette vue"))
+                (!from_here).then_some((content, side, tr!("Déplacer dans cette vue")))
             } else {
-                (here > 1).then(|| (content.with_min_x(content.center().x), Side::Right, "Ouvrir dans une vue à droite"))
+                (here > 1).then(|| {
+                    let half = content.with_min_x(content.center().x);
+                    (half, Side::Right, tr!("Ouvrir dans une vue à droite"))
+                })
             };
             if let Some((zone, target, label)) = zone {
                 let response = ui.interact(zone, ui.id().with(("tab-drop", side)), egui::Sense::hover());
@@ -2522,10 +2579,10 @@ impl App {
         let window = ctx.content_rect();
         let (zone, text, taken) = match incoming.target.as_ref().or(incoming.fallback.as_ref()) {
             Some(target) => match &target.folder {
-                Some(folder) => (target.rect, format!("Importer dans {folder}"), true),
+                Some(folder) => (target.rect, tr!("Importer dans {folder}", folder), true),
                 None => (target.rect, closed_to_files(target).to_owned(), false),
             },
-            None => (window, "Affichez d'abord les fichiers d'une connexion".to_owned(), false),
+            None => (window, tr!("Affichez d'abord les fichiers d'une connexion").to_owned(), false),
         };
         let color = if taken { p.accent } else { p.danger };
         let painter = ctx.layer_painter(egui::LayerId::new(Order::Foreground, Id::new("drop")));
@@ -2559,7 +2616,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let now = ctx.input(|input| input.time);
         let mut actions = Vec::new();
@@ -2576,6 +2633,7 @@ impl eframe::App for App {
         self.tunnels_frame(&ctx, now);
         self.local_frame(&ctx);
         self.update_frame(&ctx, now);
+        self.monitor_frame(&ctx, frame, now);
         if self.dialog.is_none() && self.quick_open.is_none() {
             self.editor_shortcuts(&ctx, &mut actions);
             self.viewer_shortcuts(&ctx, &mut actions);
@@ -2625,7 +2683,7 @@ impl eframe::App for App {
                 .resizable(false)
                 .show_separator_line(false)
                 .frame(Frame::new().fill(p.sidebar).inner_margin(Margin::same(8)))
-                .show(ui, |ui| sidebar::rail(ui, &p, &self.updater, self.settings.check_updates, &mut actions));
+                .show(ui, |ui| sidebar::rail(ui, &p, &self.updater, &self.settings, &mut actions));
         }
 
         Panel::bottom("status")
@@ -2766,10 +2824,16 @@ impl eframe::App for App {
 /// buckets, or of the drives of this computer.
 fn closed_to_files(target: &browser::DropTarget) -> &'static str {
     if target.storage.local().is_some() {
-        "Ouvrez d'abord un dossier pour y importer des fichiers"
+        tr!("Ouvrez d'abord un dossier pour y importer des fichiers")
     } else {
-        "Ouvrez d'abord un bucket pour y importer des fichiers"
+        tr!("Ouvrez d'abord un bucket pour y importer des fichiers")
     }
+}
+
+/// The toast, or the line of a form, saying that saving failed.
+fn save_failed(error: &anyhow::Error) -> String {
+    let error = format!("{error:#}");
+    tr!("Enregistrement impossible : {error}", error)
 }
 
 /// Paints `shade` over `window`, except over `hole`.
@@ -2840,6 +2904,8 @@ fn tab_content(
 
     match tab.panes {
         Panes::Editor => gap.show(ui, |ui| crate::ui::editor::show(ui, p, tab, interactive, actions)).inner,
+        // Drawn by `App::view`, which has what it shows.
+        Panes::Monitor => {}
         Panes::Files => {
             crate::ui::viewers::panel(ui, p, tab, actions);
             browser::show(ui, p, &mut tab.session, has_terminal, editor, incoming, actions);

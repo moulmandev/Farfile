@@ -19,12 +19,13 @@ impl App {
             match notice {
                 Notice::Found { release, asked } => self.update_found(ctx, release, asked),
                 Notice::UpToDate => {
-                    self.toast(now, format!("Farfile est à jour : la version {} est la dernière.", Version::current()), false);
+                    let version = Version::current();
+                    self.toast(now, tr!("Farfile est à jour : la version {version} est la dernière.", version), false);
                 }
                 Notice::Downloaded(release, file) => match self.updater.kind {
                     Kind::Installed => self.toast(
                         now,
-                        format!("Farfile {} est prêt : il s'installera à la fermeture.", release.version),
+                        tr!("Farfile {version} est prêt : il s'installera à la fermeture.", version = release.version),
                         false,
                     ),
                     Kind::Portable => match update::replace_self(&file) {
@@ -33,16 +34,17 @@ impl App {
                             // closes and starts it (see `on_exit`).
                             self.updater.replaced(release.clone());
                             self.updater.restart_on_exit = true;
-                            self.toast(now, format!("Farfile {} est installé : redémarrage…", release.version), false);
+                            let text = tr!("Farfile {version} est installé : redémarrage…", version = release.version);
+                            self.toast(now, text, false);
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        Err(message) => self.toast(now, format!("Mise à jour impossible : {message}"), true),
+                        Err(message) => self.toast(now, tr!("Mise à jour impossible : {message}", message), true),
                     },
                     Kind::Browser | Kind::Off => {}
                 },
                 Notice::Failed { message, asked } => {
                     if asked {
-                        self.toast(now, format!("Mise à jour impossible : {message}"), true);
+                        self.toast(now, tr!("Mise à jour impossible : {message}", message), true);
                     }
                 }
             }
@@ -137,9 +139,9 @@ impl App {
 
     fn open_release_page(&mut self, page: &str, now: f64) {
         if dev::active() {
-            self.toast(now, format!("Lien à ouvrir : {page}"), false);
+            self.toast(now, tr!("Lien à ouvrir : {page}", page), false);
         } else if let Err(error) = open::that_detached(page) {
-            self.toast(now, format!("Ouverture du lien impossible : {error}"), true);
+            self.toast(now, tr!("Ouverture du lien impossible : {error}", error), true);
         }
     }
 

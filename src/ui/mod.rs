@@ -7,7 +7,9 @@ pub mod editor;
 pub mod edits;
 pub mod hosts;
 pub mod file_ops;
+pub mod language;
 pub mod local;
+pub mod monitor;
 pub mod quick_open;
 pub mod s3;
 pub mod sidebar;
@@ -63,6 +65,8 @@ pub enum Action {
     EditProfile(String),
     AskDeleteProfile(String),
     ToggleTheme,
+    /// The language of the interface; none follows the system's.
+    SetLanguage(Option<crate::i18n::Lang>),
 
     // The list of connections
     /// Show the list of connections, or fold it into a thin rail.
@@ -146,4 +150,6 @@ pub enum Action {
     Editor(editor::EditorAction),
     /// Looking for a newer Farfile, and installing it.
     Update(update::UpdateAction),
+    /// The dashboard of the watched servers, and their alerts.
+    Monitor(monitor::MonitorAction),
 }

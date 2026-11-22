@@ -18,15 +18,14 @@ pub fn button(ui: &mut Ui, p: &Palette, edits: &[Edit], open: bool, actions: &mu
     }
     let unsent = edits.iter().filter(|edit| edit.unsent()).count();
     let (text, color) = if unsent > 0 {
-        (format!("{}  {unsent} à envoyer", icon::PENCIL_SIMPLE), p.folder)
-    } else if edits.len() > 1 {
-        (format!("{}  {} fichiers ouverts", icon::PENCIL_SIMPLE, edits.len()), p.muted)
+        (format!("{}  {}", icon::PENCIL_SIMPLE, tr!("{unsent} à envoyer", unsent)), p.folder)
     } else {
-        (format!("{}  1 fichier ouvert", icon::PENCIL_SIMPLE), p.muted)
+        let open = trn!(edits.len(), "{n} fichier ouvert", "{n} fichiers ouverts");
+        (format!("{}  {open}", icon::PENCIL_SIMPLE), p.muted)
     };
     let response = ui
         .add(Button::new(RichText::new(text).size(12.0).color(color)).frame(false))
-        .on_hover_text("Fichiers ouverts dans un programme de cet ordinateur");
+        .on_hover_text(tr!("Fichiers ouverts dans un programme de cet ordinateur"));
     if open {
         Popup::open_id(ui.ctx(), Popup::default_response_id(&response));
     }
@@ -35,9 +34,9 @@ pub fn button(ui: &mut Ui, p: &Palette, edits: &[Edit], open: bool, actions: &mu
         .show(|ui| {
             ui.set_width(WIDTH);
             ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(RichText::new("Fichiers ouverts").font(semibold(13.5)).color(p.text));
+            ui.label(RichText::new(tr!("Fichiers ouverts")).font(semibold(13.5)).color(p.text));
             ui.label(
-                RichText::new("Chaque enregistrement dans leur programme peut être renvoyé au serveur.")
+                RichText::new(tr!("Chaque enregistrement dans leur programme peut être renvoyé au serveur."))
                     .size(11.5)
                     .color(p.muted),
             );
@@ -50,32 +49,32 @@ pub fn button(ui: &mut Ui, p: &Palette, edits: &[Edit], open: bool, actions: &mu
 
 fn row(ui: &mut Ui, p: &Palette, edit: &Edit, actions: &mut Vec<Action>) {
     let (status, tint) = match &edit.state {
-        State::Fetching => ("ouverture…".to_owned(), p.muted),
-        State::Synced if edit.auto_upload => ("à jour · envoi automatique".to_owned(), p.success),
-        State::Synced => ("à jour".to_owned(), p.success),
-        State::Modified => ("modifié, non envoyé".to_owned(), p.folder),
-        State::Uploading => ("envoi…".to_owned(), p.accent),
-        State::Failed(error) => (format!("envoi impossible : {error}"), p.danger),
+        State::Fetching => (tr!("ouverture…").to_owned(), p.muted),
+        State::Synced if edit.auto_upload => (tr!("à jour · envoi automatique").to_owned(), p.success),
+        State::Synced => (tr!("à jour").to_owned(), p.success),
+        State::Modified => (tr!("modifié, non envoyé").to_owned(), p.folder),
+        State::Uploading => (tr!("envoi…").to_owned(), p.accent),
+        State::Failed(error) => (tr!("envoi impossible : {error}", error), p.danger),
     };
     ui.horizontal(|ui| {
         ui.set_min_height(40.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             let closing = if edit.unsent() {
-                "Abandonner les modifications locales"
+                tr!("Abandonner les modifications locales")
             } else {
-                "Ne plus suivre ce fichier"
+                tr!("Ne plus suivre ce fichier")
             };
             let idle = !matches!(edit.state, State::Fetching | State::Uploading);
             if icon_button(ui, p, icon::X, closing, idle).clicked() {
                 actions.push(Action::ForgetEdit(edit.id));
             }
             let ready = !matches!(edit.state, State::Fetching);
-            if icon_button(ui, p, icon::ARROW_SQUARE_OUT, "Rouvrir dans le programme", ready).clicked() {
+            if icon_button(ui, p, icon::ARROW_SQUARE_OUT, tr!("Rouvrir dans le programme"), ready).clicked() {
                 actions.push(Action::ReopenEdit(edit.id));
             }
             if matches!(edit.state, State::Modified | State::Failed(_)) {
-                let send = Button::new(RichText::new("Envoyer").color(p.on_accent))
+                let send = Button::new(RichText::new(tr!("Envoyer")).color(p.on_accent))
                     .fill(p.accent)
                     .min_size(egui::vec2(78.0, 28.0));
                 if ui.add(send).clicked() {

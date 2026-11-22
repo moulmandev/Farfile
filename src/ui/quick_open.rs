@@ -157,7 +157,7 @@ pub fn show(
             let before = state.query.clone();
             let field = ui.add(
                 TextEdit::singleline(&mut state.query)
-                    .hint_text(format!("{}  Ouvrir une connexion…", icon::MAGNIFYING_GLASS))
+                    .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Ouvrir une connexion…")))
                     .margin(egui::Margin::symmetric(10, 8))
                     .desired_width(f32::INFINITY),
             );
@@ -172,9 +172,9 @@ pub fn show(
             if results.is_empty() && snippets.is_empty() {
                 ui.add_space(10.0);
                 let text = if profiles.is_empty() {
-                    "Aucune connexion enregistrée."
+                    tr!("Aucune connexion enregistrée.")
                 } else {
-                    "Aucune connexion ne correspond."
+                    tr!("Aucune connexion ne correspond.")
                 };
                 ui.vertical_centered(|ui| ui.label(RichText::new(text).color(p.muted)));
                 ui.add_space(10.0);
@@ -207,7 +207,7 @@ pub fn show(
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
-                let hints = "↑↓ choisir   ·   Entrée ouvrir   ·   Ctrl+Entrée terminal   ·   Échap fermer";
+                let hints = tr!("↑↓ choisir   ·   Entrée ouvrir   ·   Ctrl+Entrée terminal   ·   Échap fermer");
                 let hints = super::ssh_power::palette_hints(state.selected, results.len(), &snippets).unwrap_or(hints);
                 ui.label(RichText::new(hints).size(11.5).color(p.faint));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

@@ -82,14 +82,16 @@ impl std::fmt::Display for S3Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.unsupported() {
             let what = if self.code.is_empty() { format!("HTTP {}", self.status) } else { self.code.clone() };
-            return write!(f, "non pris en charge par ce serveur ({what})");
+            return f.write_str(&tr!("non pris en charge par ce serveur ({what})", what));
         }
         match (self.code.is_empty(), self.message.is_empty()) {
-            (false, false) => write!(f, "{} : {}", self.code, self.message),
+            (false, false) => f.write_str(&tr!("{code} : {message}", code = self.code, message = self.message)),
             (false, true) => write!(f, "{}", self.code),
             (true, false) => write!(f, "{}", self.message),
-            (true, true) if self.status != 0 => write!(f, "le serveur a refusé la requête (HTTP {})", self.status),
-            (true, true) => write!(f, "le serveur a refusé la requête"),
+            (true, true) if self.status != 0 => {
+                f.write_str(&tr!("le serveur a refusé la requête (HTTP {status})", status = self.status))
+            }
+            (true, true) => f.write_str(tr!("le serveur a refusé la requête")),
         }
     }
 }
@@ -125,7 +127,7 @@ where
 }
 
 fn build_error(error: impl std::fmt::Display) -> S3Error {
-    S3Error::local(format!("requête invalide : {error}"))
+    S3Error::local(tr!("requête invalide : {error}", error))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -515,7 +517,7 @@ impl S3Storage {
     pub async fn undelete(&self, bucket: &str, key: &str) -> Result<usize, S3Error> {
         let versions = self.list_versions(bucket, key).await?;
         let markers = markers_to_remove(&versions)
-            .ok_or_else(|| S3Error::local("il n'en reste aucune version à restaurer"))?;
+            .ok_or_else(|| S3Error::local(tr!("il n'en reste aucune version à restaurer")))?;
         for marker in &markers {
             self.delete_version(bucket, key, marker).await?;
         }
@@ -582,7 +584,7 @@ impl S3Storage {
             .map_err(sdk_error)?;
         let upload_id = created
             .upload_id()
-            .ok_or_else(|| S3Error::local("le serveur n'a pas renvoyé d'identifiant d'envoi"))?;
+            .ok_or_else(|| S3Error::local(tr!("le serveur n'a pas renvoyé d'identifiant d'envoi")))?;
 
         let part_size = COPY_PART.max(size.div_ceil(10_000));
         let ranges = (0..size.div_ceil(part_size)).map(|index| {
@@ -1010,10 +1012,10 @@ async fn delete_identifiers(client: &Client, bucket: &str, items: &[(String, Opt
                     return Err(S3Error {
                         code: failure.code().unwrap_or_default().to_owned(),
                         status: 0,
-                        message: format!(
-                            "{} : {}",
-                            failure.key().unwrap_or("?"),
-                            failure.message().unwrap_or("suppression refusée")
+                        message: tr!(
+                            "{key} : {message}",
+                            key = failure.key().unwrap_or("?"),
+                            message = failure.message().unwrap_or(tr!("suppression refusée"))
                         ),
                     });
                 }

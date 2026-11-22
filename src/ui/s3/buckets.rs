@@ -5,7 +5,6 @@ use std::sync::Arc;
 use egui::{Key, Label, RichText, TextEdit, Ui};
 
 use super::{DIALOG_GAP, Request, buttons, failure, field, heading, note};
-use crate::format;
 use crate::s3::names::{REGIONS, bucket_name_problem, bucket_name_warning, clean_region, region_label, region_problem};
 use crate::s3::{BucketContents, Op, Reply, S3Error};
 use crate::storage::Progress;
@@ -75,13 +74,13 @@ impl NewBucket {
 
     pub fn show(&mut self, ui: &mut Ui, p: &Palette, first_frame: bool, requests: &mut Vec<Request>) -> bool {
         ui.set_width(WIDTH);
-        heading(ui, p, "Nouveau bucket");
+        heading(ui, p, tr!("Nouveau bucket"));
         ui.add_space(8.0);
         let name = field(
             ui,
             p,
-            "Nom du bucket",
-            TextEdit::singleline(&mut self.name).hint_text("mon-bucket"),
+            tr!("Nom du bucket"),
+            TextEdit::singleline(&mut self.name).hint_text(tr!("mon-bucket")),
             WIDTH,
         );
         if first_frame {
@@ -90,32 +89,34 @@ impl NewBucket {
         let typed = self.name.trim();
         let (hint, tint) = match (typed.is_empty(), bucket_name_problem(typed), bucket_name_warning(typed)) {
             (true, _, _) => (
-                "3 à 63 caractères : minuscules, chiffres, tirets et points. Le nom est partagé par tous les \
-                 clients du fournisseur : choisissez-le distinctif.",
+                tr!(
+                    "3 à 63 caractères : minuscules, chiffres, tirets et points. Le nom est partagé par tous les \
+                     clients du fournisseur : choisissez-le distinctif."
+                ),
                 p.muted,
             ),
             (false, Some(problem), _) => (problem, p.danger),
             (false, None, Some(warning)) => (warning, p.folder),
-            (false, None, None) => ("Ce nom est valide.", p.success),
+            (false, None, None) => (tr!("Ce nom est valide."), p.success),
         };
         ui.add(Label::new(RichText::new(hint).size(12.0).color(tint)).wrap());
         ui.add_space(10.0);
 
-        ui.label(small(p, "Région"));
+        ui.label(small(p, tr!("Région")));
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             ui.add(
                 TextEdit::singleline(&mut self.region)
-                    .hint_text(format!("{} (celle de la connexion)", self.default_region))
+                    .hint_text(tr!("{region} (celle de la connexion)", region = self.default_region))
                     .desired_width(WIDTH - 32.0)
                     .margin(egui::Margin::symmetric(10, 7)),
             );
-            let pick = icon_button(ui, p, icon::CARET_DOWN, "Choisir une région d'Amazon S3", true);
+            let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Choisir une région d'Amazon S3"), true);
             egui::Popup::menu(&pick).show(|ui| {
                 ui.set_min_width(300.0);
                 egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                     for (code, label) in REGIONS {
-                        let text = format!("{code}   {label}");
+                        let text = format!("{code}   {}", crate::i18n::lookup(label));
                         if ui.button(text).clicked() {
                             self.region = code.to_owned();
                             ui.close();
@@ -129,7 +130,7 @@ impl NewBucket {
         let detail = match (region_problem(&self.region), region_label(&region)) {
             (Some(problem), _) => RichText::new(problem).color(p.danger),
             (None, Some(label)) => RichText::new(label).color(p.muted),
-            (None, None) => RichText::new("Région propre au fournisseur").color(p.muted),
+            (None, None) => RichText::new(tr!("Région propre au fournisseur")).color(p.muted),
         };
         ui.label(detail.size(12.0));
 
@@ -144,11 +145,11 @@ impl NewBucket {
         }
         let mut close = false;
         buttons(ui, |ui| {
-            let label = if self.working { "Création…" } else { "Créer" };
+            let label = if self.working { tr!("Création…") } else { tr!("Créer") };
             if primary_button(ui, p, label, valid && !self.working).clicked() {
                 self.create(requests);
             }
-            close = ui.button("Annuler").clicked();
+            close = ui.button(tr!("Annuler")).clicked();
         });
         close
     }
@@ -157,15 +158,15 @@ impl NewBucket {
 /// Bucket names are global: say so rather than quote the server.
 fn creation_error(error: &S3Error) -> String {
     match error.code.as_str() {
-        "BucketAlreadyOwnedByYou" => "Vous avez déjà un bucket de ce nom.".to_owned(),
+        "BucketAlreadyOwnedByYou" => tr!("Vous avez déjà un bucket de ce nom.").to_owned(),
         "BucketAlreadyExists" => {
-            "Ce nom est déjà pris par un autre compte du fournisseur : choisissez-en un autre.".to_owned()
+            tr!("Ce nom est déjà pris par un autre compte du fournisseur : choisissez-en un autre.").to_owned()
         }
-        "InvalidBucketName" => format!("Le serveur refuse ce nom ({}).", error.message),
+        "InvalidBucketName" => tr!("Le serveur refuse ce nom ({message}).", message = error.message),
         "InvalidLocationConstraint" | "IllegalLocationConstraintException" => {
-            format!("Le serveur refuse cette région : {}", error.message)
+            tr!("Le serveur refuse cette région : {message}", message = error.message)
         }
-        "TooManyBuckets" => "Le compte a atteint son nombre maximal de buckets.".to_owned(),
+        "TooManyBuckets" => tr!("Le compte a atteint son nombre maximal de buckets.").to_owned(),
         _ => failure(error),
     }
 }
@@ -205,9 +206,9 @@ impl DeleteBucket {
                 Ok(_) => return true,
                 Err(error) => {
                     self.error = Some(if error.code == "BucketNotEmpty" {
-                        "Le bucket n'est pas vide : des objets ou des versions y restent.".to_owned()
+                        tr!("Le bucket n'est pas vide : des objets ou des versions y restent.").to_owned()
                     } else if error.code.is_empty() && error.message == "annulé" {
-                        "Arrêté : une partie du contenu a déjà été supprimée.".to_owned()
+                        tr!("Arrêté : une partie du contenu a déjà été supprimée.").to_owned()
                     } else {
                         failure(&error)
                     });
@@ -243,32 +244,32 @@ impl DeleteBucket {
 
     pub fn show(&mut self, ui: &mut Ui, p: &Palette, first_frame: bool, requests: &mut Vec<Request>) -> bool {
         ui.set_width(WIDTH);
-        heading(ui, p, "Supprimer le bucket ?");
+        heading(ui, p, tr!("Supprimer le bucket ?"));
         ui.add_space(8.0);
         let mut close = false;
         match &self.stage {
             Stage::Checking => {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(14.0).color(p.muted));
-                    ui.label(muted(p, format!("Vérification du contenu de « {} »…", self.bucket)));
+                    ui.label(muted(p, tr!("Vérification du contenu de « {bucket} »…", bucket = self.bucket)));
                 });
                 if let Some(error) = &self.error {
                     ui.add_space(6.0);
                     note(ui, p, icon::WARNING_CIRCLE, p.danger, error);
                 }
                 ui.add_space(DIALOG_GAP);
-                buttons(ui, |ui| close = ui.button("Annuler").clicked());
+                buttons(ui, |ui| close = ui.button(tr!("Annuler")).clicked());
             }
             Stage::Checked(Err(error)) => {
-                note(ui, p, icon::WARNING_CIRCLE, p.danger, &format!("Impossible de lire le bucket : {}", failure(error)));
+                note(ui, p, icon::WARNING_CIRCLE, p.danger, &tr!("Impossible de lire le bucket : {error}", error = failure(error)));
                 ui.add_space(DIALOG_GAP);
-                buttons(ui, |ui| close = ui.button("Fermer").clicked());
+                buttons(ui, |ui| close = ui.button(tr!("Fermer")).clicked());
             }
             Stage::Checked(Ok(contents)) if contents.is_empty() => {
                 ui.add(
                     Label::new(muted(
                         p,
-                        format!("Le bucket « {} » est vide. Il sera supprimé définitivement.", self.bucket),
+                        tr!("Le bucket « {bucket} » est vide. Il sera supprimé définitivement.", bucket = self.bucket),
                     ))
                     .wrap(),
                 );
@@ -278,10 +279,10 @@ impl DeleteBucket {
                 }
                 ui.add_space(DIALOG_GAP);
                 buttons(ui, |ui| {
-                    if danger_button(ui, p, "Supprimer le bucket").clicked() {
+                    if danger_button(ui, p, tr!("Supprimer le bucket")).clicked() {
                         self.delete(false, requests);
                     }
-                    close = ui.button("Annuler").clicked();
+                    close = ui.button(tr!("Annuler")).clicked();
                 });
             }
             Stage::Checked(Ok(contents)) => {
@@ -289,33 +290,33 @@ impl DeleteBucket {
                 let mut held = Vec::new();
                 if contents.objects > 0 {
                     held.push(if contents.more {
-                        "plus de 1 000 objets".to_owned()
+                        tr!("plus de 1 000 objets").to_owned()
                     } else {
-                        format::count(contents.objects, "objet", "objets")
+                        trn!(contents.objects, "{n} objet", "{n} objets")
                     });
                 }
                 if contents.versions {
-                    held.push("des versions anciennes ou des marqueurs de suppression".to_owned());
+                    held.push(tr!("des versions anciennes ou des marqueurs de suppression").to_owned());
                 }
                 if contents.uploads {
-                    held.push("des envois inachevés".to_owned());
+                    held.push(tr!("des envois inachevés").to_owned());
                 }
                 note(
                     ui,
                     p,
                     icon::WARNING,
                     p.danger,
-                    &format!(
-                        "« {} » contient {}. Un bucket doit être vide pour être supprimé.",
-                        self.bucket,
-                        held.join(", ")
+                    &tr!(
+                        "« {bucket} » contient {contents}. Un bucket doit être vide pour être supprimé.",
+                        bucket = self.bucket,
+                        contents = held.join(", ")
                     ),
                 );
                 ui.add_space(10.0);
                 ui.add(
-                    Label::new(RichText::new(
-                        "Pour tout effacer, versions comprises, puis supprimer le bucket, tapez son nom :",
-                    ))
+                    Label::new(RichText::new(tr!(
+                        "Pour tout effacer, versions comprises, puis supprimer le bucket, tapez son nom :"
+                    )))
                     .wrap(),
                 );
                 ui.add_space(4.0);
@@ -335,12 +336,12 @@ impl DeleteBucket {
                 ui.add_space(DIALOG_GAP);
                 let confirmed = self.typed.trim() == self.bucket;
                 buttons(ui, |ui| {
-                    let button = egui::Button::new(RichText::new("Vider puis supprimer").color(egui::Color32::WHITE))
+                    let button = egui::Button::new(RichText::new(tr!("Vider puis supprimer")).color(egui::Color32::WHITE))
                         .fill(p.danger);
                     if ui.add_enabled(confirmed, button).clicked() {
                         self.delete(true, requests);
                     }
-                    close = ui.button("Annuler").clicked();
+                    close = ui.button(tr!("Annuler")).clicked();
                 });
             }
             Stage::Deleting(progress) => {
@@ -348,17 +349,17 @@ impl DeleteBucket {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(14.0).color(p.accent));
                     let text = if done == 0 {
-                        format!("Suppression de « {} »…", self.bucket)
+                        tr!("Suppression de « {bucket} »…", bucket = self.bucket)
                     } else {
-                        format!("{} ou versions supprimés…", format::count(done as usize, "objet", "objets"))
+                        trn!(done, "{n} objet ou versions supprimés…", "{n} objets ou versions supprimés…")
                     };
                     ui.label(RichText::new(text).color(p.text));
                 });
-                ui.label(small(p, "Les objets partent par lots de 1 000, versions comprises."));
+                ui.label(small(p, tr!("Les objets partent par lots de 1 000, versions comprises.")));
                 ui.add_space(DIALOG_GAP);
                 let progress = progress.clone();
                 buttons(ui, |ui| {
-                    if ui.button("Arrêter").clicked() {
+                    if ui.button(tr!("Arrêter")).clicked() {
                         progress.cancel();
                     }
                 });

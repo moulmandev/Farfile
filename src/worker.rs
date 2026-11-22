@@ -239,7 +239,7 @@ impl Handle {
             let _slot = ticket.wait().await;
             if transfer.progress.is_cancelled() {
                 transfer.set_state(TransferState::Cancelled);
-                done(&handle, Err("annulé".to_owned()));
+                done(&handle, Err(tr!("annulé").to_owned()));
                 handle.ctx.request_repaint();
                 return;
             }
@@ -443,15 +443,11 @@ impl Worker {
                 .collect();
 
             handle.changed(&storage, parent);
-            let removed = if removed > 1 {
-                format!("{removed} éléments supprimés")
-            } else {
-                format!("{removed} élément supprimé")
-            };
+            let removed = trn!(removed, "{n} élément supprimé", "{n} éléments supprimés");
             match failures.first() {
                 None => handle.notice(removed, false),
                 Some(first) => handle.notice(
-                    format!("Suppression incomplète ({removed}) : {first}"),
+                    tr!("Suppression incomplète ({removed}) : {first}", removed, first),
                     true,
                 ),
             }
@@ -468,7 +464,8 @@ impl Worker {
                     }
                 }
                 Err(error) => {
-                    handle.notice(format!("Création du dossier impossible : {error:#}"), true);
+                    let error = format!("{error:#}");
+                    handle.notice(tr!("Création du dossier impossible : {error}", error), true);
                 }
             }
         });
@@ -573,9 +570,12 @@ impl Worker {
             match storage.share_url(&path, SHARE_LINK_LIFETIME).await {
                 Ok(text) => handle.emit(Event::Clipboard {
                     text,
-                    notice: "Lien temporaire copié (valable 1 h)".to_owned(),
+                    notice: tr!("Lien temporaire copié (valable 1 h)").to_owned(),
                 }),
-                Err(error) => handle.notice(format!("Lien impossible : {error:#}"), true),
+                Err(error) => {
+                    let error = format!("{error:#}");
+                    handle.notice(tr!("Lien impossible : {error}", error), true)
+                }
             }
         });
     }

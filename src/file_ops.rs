@@ -12,7 +12,6 @@ use anyhow::Result;
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 
-use crate::format;
 use crate::storage::ops::{Accounts, Properties, Tally, list_all, mode_text, walk_tree};
 use crate::storage::{Entry, Progress, RemotePath, Storage, storage_key};
 
@@ -156,12 +155,12 @@ pub fn moved_path(path: &RemotePath, from: &RemotePath, to: &RemotePath) -> Opti
 /// Why these items cannot go into `dest`, if they cannot.
 pub fn refuse(items: &[Picked], dest: &RemotePath, has_buckets: bool) -> Option<String> {
     if has_buckets && dest.is_root() {
-        return Some("Choisissez d'abord un bucket comme destination.".to_owned());
+        return Some(tr!("Choisissez d'abord un bucket comme destination.").to_owned());
     }
     items
         .iter()
         .find(|item| item.is_dir && is_within(dest, &item.path))
-        .map(|item| format!("« {} » ne peut pas aller dans lui-même.", item.path.name()))
+        .map(|item| tr!("« {name} » ne peut pas aller dans lui-même.", name = item.path.name()))
 }
 
 /// A path typed by hand: absolute, or relative to `from`, with `.` and `..`.
@@ -188,11 +187,11 @@ pub fn resolve_path(from: &RemotePath, text: &str) -> RemotePath {
 pub fn check_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() {
-        Err("Le nom ne peut pas être vide.".to_owned())
+        Err(tr!("Le nom ne peut pas être vide.").to_owned())
     } else if name.contains('/') {
-        Err("Le nom ne peut pas contenir « / ».".to_owned())
+        Err(tr!("Le nom ne peut pas contenir « / ».").to_owned())
     } else if name == "." || name == ".." {
-        Err("Ce nom est réservé.".to_owned())
+        Err(tr!("Ce nom est réservé.").to_owned())
     } else {
         Ok(name)
     }
@@ -211,7 +210,8 @@ pub fn stem(name: &str, is_dir: bool) -> &str {
 }
 
 /// A free name for a copy in the same folder: `rapport (copie).pdf`, then
-/// `rapport (copie 2).pdf`…
+/// `rapport (copie 2).pdf`… The name is the file's, in French whatever the
+/// language of the interface.
 pub fn copy_name(name: &str, is_dir: bool, taken: &HashSet<String>) -> String {
     let stem = stem(name, is_dir);
     let extension = &name[stem.len()..];
@@ -232,17 +232,16 @@ pub fn copy_name(name: &str, is_dir: bool, taken: &HashSet<String>) -> String {
 /// « photos » for one item, « 3 éléments » for more.
 pub fn describe(items: &[Picked]) -> String {
     match items {
-        [only] => format!("« {} »", only.path.name()),
-        many => format!("{} éléments", many.len()),
+        [only] => tr!("« {name} »", name = only.path.name()),
+        many => tr!("{count} éléments", count = many.len()),
     }
 }
 
-/// How a folder is named in messages.
-fn folder_name(path: &RemotePath) -> String {
-    if path.is_root() {
-        "la racine".to_owned()
-    } else {
-        format!("« {} »", path.name())
+/// The title of a change of permissions, and of its job.
+pub fn permissions_label(items: &[Picked]) -> String {
+    match items {
+        [only] => tr!("Permissions de « {name} »", name = only.path.name()),
+        many => tr!("Permissions de {count} éléments", count = many.len()),
     }
 }
 
@@ -498,7 +497,7 @@ async fn existing_names(storage: &dyn Storage, dest: &RemotePath) -> Result<Hash
     }
     match list_all(storage, dest).await {
         Ok(entries) => Ok(names(entries)),
-        Err(_) => Err(format!("Destination inaccessible : {error:#}")),
+        Err(_) => Err(tr!("Destination inaccessible : {error}", error = format!("{error:#}"))),
     }
 }
 
@@ -566,7 +565,7 @@ pub async fn run_plan(plan: Plan, job: Arc<Job>, reply: Reply) {
             }
             Ok(false) => {}
             Err(_) if job.progress.is_cancelled() => break,
-            Err(error) => failures.push(format!("{} : {error:#}", target.name)),
+            Err(error) => failures.push(tr!("{name} : {error}", name = target.name, error = format!("{error:#}"))),
         }
     }
 
@@ -594,36 +593,54 @@ pub async fn run_plan(plan: Plan, job: Arc<Job>, reply: Reply) {
 
 /// What to tell once a plan ran. A rename that worked shows by itself.
 fn plan_notice(plan: &Plan, targets: &[Target], done: &[String], failures: &[String], cancelled: bool) -> Option<(String, bool)> {
-    let verb = match (plan.rename_to.is_some(), plan.mode) {
-        (true, _) => "Renommage",
-        (false, Mode::Move) => "Déplacement",
-        (false, Mode::Copy) => "Copie",
-    };
-    let (singular, plural) = match plan.mode {
-        Mode::Move => ("déplacé", "déplacés"),
-        Mode::Copy => ("copié", "copiés"),
-    };
-    let dest = folder_name(&plan.dest);
+    let renaming = plan.rename_to.is_some();
     if cancelled {
-        let text = format!("{verb} interrompu{} : {} sur {}", if plan.mode == Mode::Copy { "e" } else { "" }, done.len(), targets.len());
+        let (done, count) = (done.len(), targets.len());
+        let text = match (renaming, plan.mode) {
+            (true, _) => tr!("Renommage interrompu : {done} sur {count}", done, count),
+            (false, Mode::Move) => tr!("Déplacement interrompu : {done} sur {count}", done, count),
+            (false, Mode::Copy) => tr!("Copie interrompue : {done} sur {count}", done, count),
+        };
         return Some((text, false));
     }
     if let Some(first) = failures.first() {
-        let text = if done.is_empty() {
-            format!("{verb} impossible : {first}")
-        } else {
-            format!("{} {plural}, {} : {first}", format::count(done.len(), "élément", "éléments"), format::count(failures.len(), "échec", "échecs"))
+        let failed = trn!(failures.len(), "{n} échec", "{n} échecs");
+        let text = match (done.is_empty(), renaming, plan.mode) {
+            (true, true, _) => tr!("Renommage impossible : {first}", first),
+            (true, false, Mode::Move) => tr!("Déplacement impossible : {first}", first),
+            (true, false, Mode::Copy) => tr!("Copie impossible : {first}", first),
+            (false, _, Mode::Move) => trn!(
+                done.len(),
+                "{n} élément déplacés, {failed} : {first}",
+                "{n} éléments déplacés, {failed} : {first}",
+                failed,
+                first
+            ),
+            (false, _, Mode::Copy) => trn!(
+                done.len(),
+                "{n} élément copiés, {failed} : {first}",
+                "{n} éléments copiés, {failed} : {first}",
+                failed,
+                first
+            ),
         };
         return Some((text, true));
     }
-    if plan.rename_to.is_some() || done.is_empty() {
+    if renaming || done.is_empty() {
         return None;
     }
     let here = targets.iter().all(|target| target.item.path.parent().as_ref() == Some(&plan.dest));
-    let text = match done {
-        [only] if here && plan.mode == Mode::Copy => format!("« {only} » créé"),
-        [only] => format!("« {only} » {singular} dans {dest}"),
-        many => format!("{} {plural} dans {dest}", format::count(many.len(), "élément", "éléments")),
+    let (root, folder) = (plan.dest.is_root(), plan.dest.name());
+    let text = match (done, plan.mode) {
+        ([only], Mode::Copy) if here => tr!("« {name} » créé", name = only),
+        ([only], Mode::Move) if root => tr!("« {name} » déplacé dans la racine", name = only),
+        ([only], Mode::Move) => tr!("« {name} » déplacé dans « {folder} »", name = only, folder),
+        ([only], Mode::Copy) if root => tr!("« {name} » copié dans la racine", name = only),
+        ([only], Mode::Copy) => tr!("« {name} » copié dans « {folder} »", name = only, folder),
+        (many, Mode::Move) if root => tr!("{count} éléments déplacés dans la racine", count = many.len()),
+        (many, Mode::Move) => tr!("{count} éléments déplacés dans « {folder} »", count = many.len(), folder),
+        (many, Mode::Copy) if root => tr!("{count} éléments copiés dans la racine", count = many.len()),
+        (many, Mode::Copy) => tr!("{count} éléments copiés dans « {folder} »", count = many.len(), folder),
     };
     Some((text, false))
 }
@@ -705,8 +722,13 @@ pub async fn run_change(change: Change, job: Arc<Job>, reply: Reply) {
 
     let entries = match reached(&change, &job.progress).await {
         Ok(entries) => entries,
-        Err(_) if job.progress.is_cancelled() => return reply.send(finish(("Modification annulée".to_owned(), false), changed)),
-        Err(error) => return reply.send(finish((format!("Modification impossible : {error:#}"), true), changed)),
+        Err(_) if job.progress.is_cancelled() => {
+            return reply.send(finish((tr!("Modification annulée").to_owned(), false), changed));
+        }
+        Err(error) => {
+            let error = format!("{error:#}");
+            return reply.send(finish((tr!("Modification impossible : {error}", error), true), changed));
+        }
     };
     job.count.store(entries.len() as u64, Ordering::Relaxed);
 
@@ -727,7 +749,7 @@ pub async fn run_change(change: Change, job: Arc<Job>, reply: Reply) {
             Ok(())
         }
         .await;
-        applied.map_err(|error| format!("{} : {error:#}", path.name()))
+        applied.map_err(|error| tr!("{name} : {error}", name = path.name(), error = format!("{error:#}")))
     };
     let mut failures: Vec<String> = Vec::new();
     let mut index = 0;
@@ -751,18 +773,27 @@ pub async fn run_change(change: Change, job: Arc<Job>, reply: Reply) {
 
     let count = entries.len();
     let what = match (change.mode, change.owner) {
-        (Some(_), Some(_)) => "Permissions et propriétaire",
-        (Some(_), None) => "Permissions",
-        _ => "Propriétaire",
+        (Some(_), Some(_)) => tr!("Permissions et propriétaire"),
+        (Some(_), None) => tr!("Permissions"),
+        _ => tr!("Propriétaire"),
     };
     let notice = if job.progress.is_cancelled() {
-        (format!("Modification interrompue : {} sur {count}", job.done.load(Ordering::Relaxed)), false)
+        let done = job.done.load(Ordering::Relaxed);
+        (tr!("Modification interrompue : {done} sur {count}", done, count), false)
     } else if let Some(first) = failures.first() {
-        (format!("{what} : {} sur {count} — {first}", format::count(failures.len(), "échec", "échecs")), true)
+        let failed = trn!(failures.len(), "{n} échec", "{n} échecs");
+        (tr!("{what} : {failed} sur {count} — {first}", what, failed, count, first), true)
     } else {
-        match (count, change.mode, &change.items[..]) {
-            (1, Some(mode), [only]) => (format!("{what} de « {} » : {}", only.path.name(), mode_text(mode)), false),
-            _ => (format!("{what} : {} modifiés", format::count(count, "élément", "éléments")), false),
+        match (count, change.mode, change.owner, &change.items[..]) {
+            (1, Some(mode), owner, [only]) => {
+                let (name, mode) = (only.path.name(), mode_text(mode));
+                let text = match owner {
+                    Some(_) => tr!("Permissions et propriétaire de « {name} » : {mode}", name, mode),
+                    None => tr!("Permissions de « {name} » : {mode}", name, mode),
+                };
+                (text, false)
+            }
+            _ => (trn!(count, "{what} : {n} élément modifiés", "{what} : {n} éléments modifiés", what), false),
         }
     };
     reply.send(finish(notice, changed));
@@ -790,7 +821,7 @@ pub async fn run_size(storage: Arc<dyn Storage>, path: RemotePath, sizing: Arc<S
     let error = match result {
         Ok(()) => None,
         Err(_) if sizing.tally.is_cancelled() => Some("annulé".to_owned()),
-        Err(error) => Some(format!("Taille de « {} » : {error:#}", path.name())),
+        Err(error) => Some(tr!("Taille de « {name} » : {error}", name = path.name(), error = format!("{error:#}"))),
     };
     if let Ok(mut slot) = sizing.error.lock() {
         slot.clone_from(&error);

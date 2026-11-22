@@ -4,20 +4,43 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, Local};
 
-/// `1536` → `1,5 Ko`. Binary units with the French labels Windows uses.
+use crate::i18n::Lang;
+
+/// `1536` → `1,5 Ko` in French, `1.5 KB` in English. Binary units, with
+/// the labels Windows uses in each language.
 pub fn size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["Ko", "Mo", "Go", "To", "Po"];
+    size_in(crate::i18n::current(), bytes)
+}
+
+pub fn size_in(lang: Lang, bytes: u64) -> String {
+    let (byte, units) = match lang {
+        Lang::Fr => ("o", ["Ko", "Mo", "Go", "To", "Po"]),
+        Lang::En | Lang::De | Lang::Es => ("B", ["KB", "MB", "GB", "TB", "PB"]),
+    };
     if bytes < 1024 {
-        return format!("{bytes} o");
+        return format!("{bytes} {byte}");
     }
     let mut value = bytes as f64 / 1024.0;
     let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
+    while value >= 1024.0 && unit < units.len() - 1 {
         value /= 1024.0;
         unit += 1;
     }
     let digits = if value >= 100.0 { 0 } else { 1 };
-    format!("{value:.digits$} {}", UNITS[unit]).replace('.', ",")
+    format!("{} {}", decimal_in(lang, value, digits), units[unit])
+}
+
+/// A number with `digits` decimals and the separator of the language.
+pub fn decimal(value: f64, digits: usize) -> String {
+    decimal_in(crate::i18n::current(), value, digits)
+}
+
+fn decimal_in(lang: Lang, value: f64, digits: usize) -> String {
+    let text = format!("{value:.digits$}");
+    match lang.decimal() {
+        '.' => text,
+        separator => text.replace('.', &separator.to_string()),
+    }
 }
 
 pub fn speed(bytes_per_second: f64) -> String {
@@ -26,12 +49,35 @@ pub fn speed(bytes_per_second: f64) -> String {
 
 pub fn date(unix_seconds: i64) -> String {
     DateTime::from_timestamp(unix_seconds, 0)
-        .map(|utc| {
-            utc.with_timezone(&Local)
-                .format("%d/%m/%Y %H:%M")
-                .to_string()
-        })
+        .map(|utc| utc.with_timezone(&Local).format(date_pattern()).to_string())
         .unwrap_or_default()
+}
+
+/// The day and time as the language writes them, for chrono's `format`.
+pub fn date_pattern() -> &'static str {
+    match crate::i18n::current() {
+        Lang::Fr | Lang::Es => "%d/%m/%Y %H:%M",
+        Lang::De => "%d.%m.%Y %H:%M",
+        Lang::En => "%Y-%m-%d %H:%M",
+    }
+}
+
+/// The same with seconds.
+pub fn date_seconds_pattern() -> &'static str {
+    match crate::i18n::current() {
+        Lang::Fr | Lang::Es => "%d/%m/%Y %H:%M:%S",
+        Lang::De => "%d.%m.%Y %H:%M:%S",
+        Lang::En => "%Y-%m-%d %H:%M:%S",
+    }
+}
+
+/// The day alone.
+pub fn day_pattern() -> &'static str {
+    match crate::i18n::current() {
+        Lang::Fr | Lang::Es => "%d/%m/%Y",
+        Lang::De => "%d.%m.%Y",
+        Lang::En => "%Y-%m-%d",
+    }
 }
 
 pub fn duration(seconds: f64) -> String {
@@ -40,14 +86,6 @@ pub fn duration(seconds: f64) -> String {
         0..60 => format!("{seconds} s"),
         60..3600 => format!("{} min {:02} s", seconds / 60, seconds % 60),
         _ => format!("{} h {:02} min", seconds / 3600, seconds % 3600 / 60),
-    }
-}
-
-pub fn count(n: usize, singular: &str, plural: &str) -> String {
-    if n > 1 {
-        format!("{n} {plural}")
-    } else {
-        format!("{n} {singular}")
     }
 }
 
@@ -101,6 +139,9 @@ mod tests {
         assert_eq!(size(401_709_466), "383 Mo");
         assert_eq!(size(24_536_678), "23,4 Mo");
         assert_eq!(size(3 * 1024 * 1024 * 1024), "3,0 Go");
+        assert_eq!(size_in(Lang::En, 1536), "1.5 KB");
+        assert_eq!(size_in(Lang::De, 235), "235 B");
+        assert_eq!(size_in(Lang::De, 24_536_678), "23,4 MB");
     }
 
     #[test]

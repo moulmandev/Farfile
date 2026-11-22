@@ -12,7 +12,7 @@ const GAP: f32 = 16.0;
 const BAR_WIDTH: f32 = 34.0;
 
 /// The colour of a gauge: calm, then warning, then alarm.
-fn level(p: &Palette, fraction: f32) -> Color32 {
+pub(crate) fn level(p: &Palette, fraction: f32) -> Color32 {
     if fraction >= 0.9 {
         p.danger
     } else if fraction >= 0.75 {
@@ -39,14 +39,14 @@ fn figure(label: impl Into<String>, value: impl Into<String>, gauge: Option<f32>
 
 /// The fullest of the disks, which is the one to watch; the root one, which
 /// comes first, when they are as full.
-fn fullest(disks: &[Disk]) -> Option<&Disk> {
+pub(crate) fn fullest(disks: &[Disk]) -> Option<&Disk> {
     disks
         .iter()
         .reduce(|best, disk| if disk.fraction() > best.fraction() + 0.005 { disk } else { best })
 }
 
 /// `7,5 / 30,9 Go`: the unit once when both sizes share it.
-fn size_pair(used: u64, total: u64) -> String {
+pub(crate) fn size_pair(used: u64, total: u64) -> String {
     let (used, total) = (format::size(used), format::size(total));
     match (used.rsplit_once(' '), total.rsplit_once(' ')) {
         (Some((number, unit)), Some((_, same))) if unit == same => format!("{number} / {total}"),
@@ -55,7 +55,7 @@ fn size_pair(used: u64, total: u64) -> String {
 }
 
 /// `↓ 12 Ko/s  ↑ 3 Ko/s`.
-fn rates(received: f64, sent: f64) -> String {
+pub(crate) fn rates(received: f64, sent: f64) -> String {
     let (down, up) = (format::speed(received), format::speed(sent));
     format!("{} {down}  {} {up}", icon::ARROW_DOWN, icon::ARROW_UP)
 }
@@ -76,24 +76,25 @@ fn figures(view: &View, compact: bool) -> Vec<Figure> {
     if let Some(memory) = sample.memory.filter(|memory| memory.total > 0) {
         let used = memory.used() as f32 / memory.total as f32;
         let value = if compact { percent(used) } else { size_pair(memory.used(), memory.total) };
-        figures.push(figure("Mém.", value, Some(used)));
+        figures.push(figure(tr!("Mém."), value, Some(used)));
     }
     if let Some(disk) = fullest(&sample.disks) {
-        figures.push(figure(format!("Disque {}", disk.mount), percent(disk.fraction()), Some(disk.fraction())));
+        let label = tr!("Disque {mount}", mount = disk.mount);
+        figures.push(figure(label, percent(disk.fraction()), Some(disk.fraction())));
     }
     if let Some([one, five, fifteen]) = sample.load {
         let value = format!("{} {} {}", decimal(one, 2), decimal(five, 2), decimal(fifteen, 2));
-        figures.push(figure("Charge", value, None));
+        figures.push(figure(tr!("Charge"), value, None));
     }
     if let Some((received, sent)) = view.network {
-        figures.push(figure("Réseau", rates(received, sent), None));
+        figures.push(figure(tr!("Réseau"), rates(received, sent), None));
     }
     if let Some(memory) = sample.memory.filter(|memory| memory.swap_used() > 0) {
         let used = memory.swap_used() as f32 / memory.swap_total.max(1) as f32;
         figures.push(figure("Swap", format::size(memory.swap_used()), Some(used)));
     }
     if let Some(uptime) = sample.uptime {
-        figures.push(figure("Allumé depuis", uptime_text(uptime), None));
+        figures.push(figure(tr!("Allumé depuis"), uptime_text(uptime), None));
     }
     figures
 }
@@ -111,12 +112,12 @@ pub fn strip(ui: &mut Ui, p: &Palette, rect: Rect, view: &View, id: Id) {
         painter.galley(pos2(rect.left() + 22.0, y - galley.size().y / 2.0), galley, color);
     };
     match &view.status {
-        Status::Connecting => line(icon::HOURGLASS, "Connexion pour l'aperçu du serveur…", p.muted),
-        Status::Failed(error) => line(icon::WARNING_CIRCLE, &format!("Aperçu indisponible : {error}"), p.danger),
+        Status::Connecting => line(icon::HOURGLASS, tr!("Connexion pour l'aperçu du serveur…"), p.muted),
+        Status::Failed(error) => line(icon::WARNING_CIRCLE, &tr!("Aperçu indisponible : {error}", error), p.danger),
         Status::Unsupported(system) => {
             let text = match system {
-                Some(system) => format!("Aperçu non disponible sur ce système ({system})"),
-                None => "Aperçu non disponible sur ce système".to_owned(),
+                Some(system) => tr!("Aperçu non disponible sur ce système ({system})", system),
+                None => tr!("Aperçu non disponible sur ce système").to_owned(),
             };
             line(icon::INFO, &text, p.muted);
         }
@@ -150,24 +151,24 @@ pub fn strip(ui: &mut Ui, p: &Palette, rect: Rect, view: &View, id: Id) {
 }
 
 /// Everything known about the server, for the tooltip.
-fn details(ui: &mut Ui, p: &Palette, view: &View) {
+pub(crate) fn details(ui: &mut Ui, p: &Palette, view: &View) {
     ui.set_min_width(300.0);
     let Some(sample) = &view.sample else {
         if let Status::Failed(error) = &view.status {
             ui.label(RichText::new(error).color(p.danger));
         } else {
-            ui.label(RichText::new("En attente d'une première mesure…").color(p.muted));
+            ui.label(RichText::new(tr!("En attente d'une première mesure…")).color(p.muted));
         }
         return;
     };
     let title = match (&sample.host, &sample.system) {
         (Some(host), Some(system)) => format!("{host}  ·  {system}"),
         (Some(name), None) | (None, Some(name)) => name.clone(),
-        (None, None) => "Serveur".to_owned(),
+        (None, None) => tr!("Serveur").to_owned(),
     };
     ui.label(RichText::new(title).font(semibold(13.5)).color(p.text));
     if let Status::Failed(error) = &view.status {
-        ui.label(RichText::new(format!("Dernière mesure : {error}")).size(12.0).color(p.danger));
+        ui.label(RichText::new(tr!("Dernière mesure : {error}", error)).size(12.0).color(p.danger));
     }
     ui.add_space(4.0);
 
@@ -177,18 +178,18 @@ fn details(ui: &mut Ui, p: &Palette, view: &View) {
     grid.show(ui, |ui| {
         let mut processor = view.cpu.map(percent).unwrap_or_else(|| "…".to_owned());
         if let Some(cores) = sample.cores {
-            processor.push_str(&format!(" · {}", format::count(cores as usize, "cœur", "cœurs")));
+            processor.push_str(&format!(" · {}", trn!(cores, "{n} cœur", "{n} cœurs")));
         }
-        key(ui, "Processeur");
+        key(ui, tr!("Processeur"));
         value(ui, processor);
         ui.end_row();
         if let Some([one, five, fifteen]) = sample.load {
-            key(ui, "Charge (1, 5, 15 min)");
+            key(ui, tr!("Charge (1, 5, 15 min)"));
             value(ui, format!("{}   {}   {}", decimal(one, 2), decimal(five, 2), decimal(fifteen, 2)));
             ui.end_row();
         }
         if let Some(memory) = sample.memory {
-            key(ui, "Mémoire");
+            key(ui, tr!("Mémoire"));
             let share = if memory.total > 0 { memory.used() as f32 / memory.total as f32 } else { 0.0 };
             value(ui, format!("{}  ({})", size_pair(memory.used(), memory.total), percent(share)));
             ui.end_row();
@@ -196,7 +197,7 @@ fn details(ui: &mut Ui, p: &Palette, view: &View) {
             value(
                 ui,
                 if memory.swap_total == 0 {
-                    "aucun".to_owned()
+                    tr!("aucun").to_owned()
                 } else {
                     size_pair(memory.swap_used(), memory.swap_total)
                 },
@@ -204,17 +205,17 @@ fn details(ui: &mut Ui, p: &Palette, view: &View) {
             ui.end_row();
         }
         if let Some((received, sent)) = view.network {
-            key(ui, "Réseau");
+            key(ui, tr!("Réseau"));
             value(ui, rates(received, sent));
             ui.end_row();
         }
         if let Some(uptime) = sample.uptime {
-            key(ui, "Allumé depuis");
+            key(ui, tr!("Allumé depuis"));
             value(ui, uptime_text(uptime));
             ui.end_row();
         }
         for (index, disk) in sample.disks.iter().enumerate() {
-            key(ui, if index == 0 { "Disques" } else { "" });
+            key(ui, if index == 0 { tr!("Disques") } else { "" });
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let (rect, _) = ui.allocate_exact_size(vec2(BAR_WIDTH, 12.0), Sense::hover());
@@ -225,11 +226,14 @@ fn details(ui: &mut Ui, p: &Palette, view: &View) {
                 value(
                     ui,
                     format!(
-                        "{}  {}  ·  {} libres sur {}",
+                        "{}  {}  ·  {}",
                         disk.mount,
                         percent(disk.fraction()),
-                        format::size(disk.available),
-                        format::size(disk.size)
+                        tr!(
+                            "{free} libres sur {size}",
+                            free = format::size(disk.available),
+                            size = format::size(disk.size)
+                        )
                     ),
                 );
             });
@@ -238,9 +242,9 @@ fn details(ui: &mut Ui, p: &Palette, view: &View) {
     });
     ui.add_space(4.0);
     ui.label(
-        RichText::new(format!(
-            "Mesuré toutes les {} s sur une connexion à part, sans rien modifier.",
-            crate::ssh_power::stats::INTERVAL.as_secs()
+        RichText::new(tr!(
+            "Mesuré toutes les {seconds} s sur une connexion à part, sans rien modifier.",
+            seconds = crate::ssh_power::stats::INTERVAL.as_secs()
         ))
         .size(11.0)
         .color(p.faint),

@@ -40,7 +40,7 @@ impl FtpStorage {
             if let Err(error) = lease.ftp().mkdir(folder.to_string()).await {
                 return lease
                     .settle::<()>(Err(error))
-                    .with_context(|| format!("impossible de créer {folder}"));
+                    .with_context(|| tr!("impossible de créer {path}", path = folder));
             }
         }
         lease.release();
@@ -112,7 +112,7 @@ where
     let mut buffer = vec![0u8; CHUNK];
     loop {
         if progress.is_cancelled() {
-            bail!("annulé");
+            bail!(tr!("annulé"));
         }
         let read = reader.read(&mut buffer).await?;
         if read == 0 {

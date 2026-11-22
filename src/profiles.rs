@@ -57,6 +57,9 @@ pub enum Panes {
     /// A file open in the built-in editor (see `Tab::editor`): neither the
     /// files nor a terminal. Never saved with a connection.
     Editor,
+    /// The dashboard of the watched servers (see `crate::monitor`). Never
+    /// saved with a connection either.
+    Monitor,
 }
 
 impl Panes {
@@ -153,7 +156,7 @@ impl Profile {
         } else if self.protocol == Protocol::S3 {
             "Amazon S3"
         } else {
-            "Sans nom"
+            tr!("Sans nom")
         }
     }
 
@@ -216,7 +219,7 @@ pub fn load() -> Vec<Profile> {
 }
 
 pub fn save(profiles: &[Profile]) -> Result<()> {
-    let path = file_path().context("dossier de configuration introuvable")?;
+    let path = file_path().context(tr!("dossier de configuration introuvable"))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -279,6 +282,20 @@ pub struct Settings {
     pub check_updates: bool,
     /// The version the user chose to skip: not offered again by itself.
     pub skipped_update: Option<String>,
+    /// The language of the interface (`en`, `fr`…); none follows the
+    /// system's. Preferences saved before there was a choice were made in
+    /// French, the only language then: they stay in French.
+    #[serde(default = "french_before_languages")]
+    pub language: Option<String>,
+    /// The servers watched on the dashboard, the thresholds of their
+    /// alerts, how alerts are told, and whether closing the window keeps
+    /// watching.
+    #[serde(default)]
+    pub monitor: crate::monitor::MonitorSettings,
+}
+
+fn french_before_languages() -> Option<String> {
+    Some("fr".to_owned())
 }
 
 impl Default for Settings {
@@ -298,6 +315,8 @@ impl Default for Settings {
             transfers: crate::transfers::TransferSettings::default(),
             check_updates: true,
             skipped_update: None,
+            language: None,
+            monitor: Default::default(),
         }
     }
 }
@@ -568,6 +587,13 @@ mod tests {
         assert!(!settings.dark);
         assert!(settings.sidebar_visible);
         assert!(settings.folders.is_empty());
+        // Made in French, the only language then: they stay in French. New
+        // preferences, and "the system's language" once chosen, follow the
+        // system.
+        assert_eq!(settings.language.as_deref(), Some("fr"));
+        assert_eq!(Settings::default().language, None);
+        let system: Settings = serde_json::from_str(r#"{"language": null}"#).unwrap();
+        assert_eq!(system.language, None);
     }
 
     #[test]

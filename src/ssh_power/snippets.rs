@@ -51,7 +51,7 @@ impl Snippet {
         }
         match self.command.lines().map(str::trim).find(|line| !line.is_empty()) {
             Some(line) => line,
-            None => "Sans nom",
+            None => tr!("Sans nom"),
         }
     }
 
@@ -286,7 +286,7 @@ pub fn save(snippets: &[Snippet]) -> Result<()> {
     if dev::active() {
         return Ok(());
     }
-    let path = file_path().context("dossier de configuration introuvable")?;
+    let path = file_path().context(tr!("dossier de configuration introuvable"))?;
     write(&path, snippets)
 }
 

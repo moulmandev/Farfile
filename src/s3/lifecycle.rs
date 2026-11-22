@@ -156,17 +156,17 @@ impl LifecycleDoc {
     /// Checks what S3 would refuse, with a message that says where.
     pub fn validate(&self) -> Result<()> {
         if self.rules.len() > MAX_RULES {
-            bail!("S3 accepte au plus {MAX_RULES} règles.");
+            bail!(tr!("S3 accepte au plus {max} règles.", max = MAX_RULES));
         }
         let mut ids = std::collections::HashSet::new();
         for (index, rule) in self.rules.iter().enumerate() {
             let name = rule.label(index);
             if let Some(id) = &rule.id {
                 if id.chars().count() > 255 {
-                    bail!("{name} : le nom ne peut pas dépasser 255 caractères.");
+                    bail!(tr!("{name} : le nom ne peut pas dépasser 255 caractères.", name));
                 }
                 if !id.is_empty() && !ids.insert(id.as_str()) {
-                    bail!("Deux règles portent le nom « {id} ».");
+                    bail!(tr!("Deux règles portent le nom « {id} ».", id));
                 }
             }
             rule.validate().with_context(|| name.clone())?;
@@ -195,15 +195,15 @@ impl RuleDoc {
     /// How the rule is called in messages: its name, or its rank.
     pub fn label(&self, index: usize) -> String {
         match self.id.as_deref().filter(|id| !id.is_empty()) {
-            Some(id) => format!("Règle « {id} »"),
-            None => format!("Règle {}", index + 1),
+            Some(id) => tr!("Règle « {id} »", id),
+            None => tr!("Règle {n}", n = index + 1),
         }
     }
 
     fn validate(&self) -> Result<()> {
         let positive = |days: Option<i32>, what: &str| -> Result<()> {
             match days {
-                Some(days) if days < 1 => bail!("{what} : le nombre de jours doit être d'au moins 1."),
+                Some(days) if days < 1 => bail!(tr!("{what} : le nombre de jours doit être d'au moins 1.", what)),
                 _ => Ok(()),
             }
         };
@@ -213,49 +213,49 @@ impl RuleDoc {
             || !self.noncurrent_version_transitions.is_empty()
             || self.abort_incomplete_multipart_upload.is_some();
         if !has_action {
-            bail!("choisissez au moins une action.");
+            bail!(tr!("choisissez au moins une action."));
         }
         if let Some(expiration) = &self.expiration {
-            positive(expiration.days, "expiration")?;
+            positive(expiration.days, tr!("expiration"))?;
             let set = [
                 expiration.days.is_some(),
                 expiration.date.is_some(),
                 expiration.expired_object_delete_marker.is_some(),
             ];
             match set.iter().filter(|set| **set).count() {
-                0 => bail!("l'expiration doit donner Days, Date ou ExpiredObjectDeleteMarker."),
+                0 => bail!(tr!("l'expiration doit donner Days, Date ou ExpiredObjectDeleteMarker.")),
                 1 => {}
-                _ => bail!("l'expiration ne peut donner qu'un seul de Days, Date et ExpiredObjectDeleteMarker."),
+                _ => bail!(tr!("l'expiration ne peut donner qu'un seul de Days, Date et ExpiredObjectDeleteMarker.")),
             }
             if let Some(date) = &expiration.date {
                 parse_date(date)?;
             }
         }
         for transition in &self.transitions {
-            positive(transition.days, "transition")?;
+            positive(transition.days, tr!("transition"))?;
             if transition.storage_class.as_deref().unwrap_or("").is_empty() {
-                bail!("une transition doit donner sa classe de stockage (StorageClass).");
+                bail!(tr!("une transition doit donner sa classe de stockage (StorageClass)."));
             }
             if let Some(date) = &transition.date {
                 parse_date(date)?;
             }
         }
         if let Some(noncurrent) = &self.noncurrent_version_expiration {
-            positive(noncurrent.noncurrent_days, "versions non actuelles")?;
+            positive(noncurrent.noncurrent_days, tr!("versions non actuelles"))?;
             if noncurrent.noncurrent_days.is_none() {
-                bail!("la suppression des versions non actuelles doit donner NoncurrentDays.");
+                bail!(tr!("la suppression des versions non actuelles doit donner NoncurrentDays."));
             }
         }
         for transition in &self.noncurrent_version_transitions {
-            positive(transition.noncurrent_days, "transition des versions non actuelles")?;
+            positive(transition.noncurrent_days, tr!("transition des versions non actuelles"))?;
         }
         if let Some(abort) = &self.abort_incomplete_multipart_upload {
-            positive(Some(abort.days_after_initiation), "envois incomplets")?;
+            positive(Some(abort.days_after_initiation), tr!("envois incomplets"))?;
             let tagged = self.filter.as_ref().is_some_and(|filter| {
                 filter.tag.is_some() || filter.and.as_ref().is_some_and(|and| !and.tags.is_empty())
             });
             if tagged {
-                bail!("l'interruption des envois incomplets ne peut pas filtrer par étiquette.");
+                bail!(tr!("l'interruption des envois incomplets ne peut pas filtrer par étiquette."));
             }
         }
         Ok(())
@@ -388,17 +388,17 @@ impl RuleDoc {
     pub fn advanced(&self) -> Vec<&'static str> {
         let mut parts = Vec::new();
         if self.filter.as_ref().is_some_and(|filter| !filter.is_simple()) {
-            parts.push("filtre avancé");
+            parts.push(tr!("filtre avancé"));
         }
         if !self.transitions.is_empty() || !self.noncurrent_version_transitions.is_empty() {
-            parts.push("transitions");
+            parts.push(tr!("transitions"));
         }
         if let Some(expiration) = &self.expiration {
             if expiration.date.is_some() {
-                parts.push("expiration à date fixe");
+                parts.push(tr!("expiration à date fixe"));
             }
             if expiration.expired_object_delete_marker.is_some() {
-                parts.push("marqueurs de suppression orphelins");
+                parts.push(tr!("marqueurs de suppression orphelins"));
             }
         }
         if self
@@ -406,7 +406,7 @@ impl RuleDoc {
             .as_ref()
             .is_some_and(|noncurrent| noncurrent.newer_noncurrent_versions.is_some())
         {
-            parts.push("versions récentes conservées");
+            parts.push(tr!("versions récentes conservées"));
         }
         parts
     }
@@ -415,17 +415,25 @@ impl RuleDoc {
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         if let Some(days) = self.expiration.as_ref().and_then(|expiration| expiration.days) {
-            parts.push(format!("expire après {}", days_text(days)));
+            parts.push(trn!(days.max(0), "expire après {n} jour", "expire après {n} jours"));
         }
         if let Some(days) = self.noncurrent_version_expiration.as_ref().and_then(|n| n.noncurrent_days) {
-            parts.push(format!("anciennes versions supprimées après {}", days_text(days)));
+            parts.push(trn!(
+                days.max(0),
+                "anciennes versions supprimées après {n} jour",
+                "anciennes versions supprimées après {n} jours"
+            ));
         }
         if let Some(abort) = &self.abort_incomplete_multipart_upload {
-            parts.push(format!("envois incomplets interrompus après {}", days_text(abort.days_after_initiation)));
+            parts.push(trn!(
+                abort.days_after_initiation.max(0),
+                "envois incomplets interrompus après {n} jour",
+                "envois incomplets interrompus après {n} jours"
+            ));
         }
         parts.extend(self.advanced().into_iter().map(str::to_owned));
         if parts.is_empty() {
-            "aucune action".to_owned()
+            tr!("aucune action").to_owned()
         } else {
             parts.join(" · ")
         }
@@ -487,16 +495,17 @@ impl FilterDoc {
 
 fn parse_date(text: &str) -> Result<DateTime> {
     DateTime::from_str(text, DateTimeFormat::DateTime)
-        .with_context(|| format!("date « {text} » illisible : attendu 2027-01-31T00:00:00Z"))
-}
-
-pub fn days_text(days: i32) -> String {
-    if days > 1 { format!("{days} jours") } else { format!("{days} jour") }
+        .with_context(|| tr!("date « {text} » illisible : attendu 2027-01-31T00:00:00Z", text))
 }
 
 /// serde's message, located in the text.
 pub fn json_error(error: &serde_json::Error) -> anyhow::Error {
-    anyhow::anyhow!("JSON invalide (ligne {}, colonne {}) : {error}", error.line(), error.column())
+    anyhow::anyhow!(tr!(
+        "JSON invalide (ligne {line}, colonne {column}) : {error}",
+        line = error.line(),
+        column = error.column(),
+        error
+    ))
 }
 
 /// One rule as the simple editor shows it. Numbers stay text while typed.
@@ -562,7 +571,7 @@ impl RuleForm {
         let days = |text: &str, what: &str| -> Result<i32, String> {
             match text.trim().parse::<i32>() {
                 Ok(days) if days >= 1 => Ok(days),
-                _ => Err(format!("{what} : indiquez un nombre de jours d'au moins 1.")),
+                _ => Err(tr!("{what} : indiquez un nombre de jours d'au moins 1.", what)),
             }
         };
         let mut rule = self.base.clone();
@@ -583,7 +592,7 @@ impl RuleForm {
         let had_days = self.base.expiration.as_ref().is_some_and(|expiration| expiration.days.is_some());
         if self.expire {
             rule.expiration = Some(ExpirationDoc {
-                days: Some(days(&self.expire_days, "Expiration")?),
+                days: Some(days(&self.expire_days, tr!("Expiration"))?),
                 ..ExpirationDoc::default()
             });
         } else if had_days {
@@ -597,7 +606,7 @@ impl RuleForm {
                 .as_ref()
                 .and_then(|noncurrent| noncurrent.newer_noncurrent_versions);
             rule.noncurrent_version_expiration = Some(NoncurrentExpirationDoc {
-                noncurrent_days: Some(days(&self.noncurrent_days, "Versions non actuelles")?),
+                noncurrent_days: Some(days(&self.noncurrent_days, tr!("Versions non actuelles"))?),
                 newer_noncurrent_versions: newer,
             });
         } else {
@@ -606,7 +615,7 @@ impl RuleForm {
 
         rule.abort_incomplete_multipart_upload = if self.abort {
             Some(AbortDoc {
-                days_after_initiation: days(&self.abort_days, "Envois incomplets")?,
+                days_after_initiation: days(&self.abort_days, tr!("Envois incomplets"))?,
             })
         } else {
             None
@@ -624,8 +633,8 @@ pub fn doc_from_forms(forms: &[RuleForm]) -> Result<LifecycleDoc, String> {
         .map(|(index, form)| {
             form.to_doc().map_err(|error| {
                 let label = form.base.label(index);
-                let label = if form.id.trim().is_empty() { format!("Règle {}", index + 1) } else { label };
-                format!("{label} : {error}")
+                let label = if form.id.trim().is_empty() { tr!("Règle {n}", n = index + 1) } else { label };
+                tr!("{name} : {problem}", name = label, problem = error)
             })
         })
         .collect::<Result<Vec<_>, String>>()?;

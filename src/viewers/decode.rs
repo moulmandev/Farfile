@@ -333,7 +333,7 @@ pub fn json_error(text: &str) -> Option<String> {
     let values = serde_json::Deserializer::from_str(text).into_iter::<serde::de::IgnoredAny>();
     for value in values {
         if let Err(error) = value {
-            return Some(format!("ligne {}, colonne {}", error.line(), error.column()));
+            return Some(tr!("ligne {line}, colonne {column}", line = error.line(), column = error.column()));
         }
     }
     None

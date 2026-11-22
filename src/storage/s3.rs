@@ -189,7 +189,7 @@ impl S3Storage {
             .map_err(s3_err)?;
         let upload_id = created
             .upload_id()
-            .context("le serveur n'a pas renvoyé d'identifiant d'envoi")?;
+            .context(tr!("le serveur n'a pas renvoyé d'identifiant d'envoi"))?;
 
         let part_size = PART_SIZE.max(size.div_ceil(MAX_PARTS));
         let ranges = (0..size.div_ceil(part_size)).map(|index| {
@@ -359,7 +359,7 @@ impl Storage for S3Storage {
     }
 
     async fn walk(&self, path: &RemotePath, found: FoundSink<'_>) -> Result<()> {
-        let (bucket, prefix) = split(path, true).context("choisissez d'abord un bucket")?;
+        let (bucket, prefix) = split(path, true).context(tr!("choisissez d'abord un bucket"))?;
         self.each_key(bucket, &prefix, |key, size| {
             let relative = key.strip_prefix(prefix.as_str()).unwrap_or(key);
             match relative.strip_suffix('/') {
@@ -380,7 +380,7 @@ impl Storage for S3Storage {
     }
 
     async fn download(&self, path: &RemotePath, dest: &Path, progress: &Progress) -> Result<()> {
-        let (bucket, key) = split(path, false).context("chemin de fichier invalide")?;
+        let (bucket, key) = split(path, false).context(tr!("chemin de fichier invalide"))?;
         let object = self
             .client
             .get_object()
@@ -431,7 +431,7 @@ impl Storage for S3Storage {
     }
 
     async fn upload(&self, src: &Path, dest: &RemotePath, progress: &Progress) -> Result<()> {
-        let (bucket, key) = split(dest, false).context("choisissez d'abord un bucket")?;
+        let (bucket, key) = split(dest, false).context(tr!("choisissez d'abord un bucket"))?;
         let size = tokio::fs::metadata(src).await?.len();
         progress.set_total(size);
         let content_type = mime_guess::from_path(src)
@@ -463,9 +463,9 @@ impl Storage for S3Storage {
 
     async fn delete(&self, path: &RemotePath, is_dir: bool) -> Result<u64> {
         if path.segments().len() < 2 {
-            bail!("la suppression de buckets n'est pas prise en charge");
+            bail!(tr!("la suppression de buckets n'est pas prise en charge"));
         }
-        let (bucket, key) = split(path, is_dir).context("chemin invalide")?;
+        let (bucket, key) = split(path, is_dir).context(tr!("chemin invalide"))?;
 
         if !is_dir {
             self.client
@@ -494,11 +494,11 @@ impl Storage for S3Storage {
             match batched {
                 Ok(output) => {
                     if let Some(failure) = output.errors().first() {
-                        bail!(
-                            "{} : {}",
-                            failure.key().unwrap_or("?"),
-                            failure.message().unwrap_or("suppression refusée")
-                        );
+                        bail!(tr!(
+                            "{key} : {message}",
+                            key = failure.key().unwrap_or("?"),
+                            message = failure.message().unwrap_or(tr!("suppression refusée"))
+                        ));
                     }
                 }
                 // Some providers reject the batch call (missing Content-MD5,
@@ -527,9 +527,9 @@ impl Storage for S3Storage {
 
     async fn create_folder(&self, path: &RemotePath) -> Result<()> {
         if path.segments().len() < 2 {
-            bail!("la création de buckets n'est pas prise en charge");
+            bail!(tr!("la création de buckets n'est pas prise en charge"));
         }
-        let (bucket, key) = split(path, true).context("chemin invalide")?;
+        let (bucket, key) = split(path, true).context(tr!("chemin invalide"))?;
         self.client
             .put_object()
             .bucket(bucket)
@@ -542,7 +542,7 @@ impl Storage for S3Storage {
     }
 
     async fn share_url(&self, path: &RemotePath, expires: Duration) -> Result<String> {
-        let (bucket, key) = split(path, false).context("chemin de fichier invalide")?;
+        let (bucket, key) = split(path, false).context(tr!("chemin de fichier invalide"))?;
         let request = self
             .client
             .get_object()
@@ -567,7 +567,7 @@ impl Storage for S3Storage {
     }
 
     async fn read_range(&self, path: &RemotePath, offset: u64, len: u64) -> Result<super::Chunk> {
-        let (bucket, key) = split(path, false).context("chemin de fichier invalide")?;
+        let (bucket, key) = split(path, false).context(tr!("chemin de fichier invalide"))?;
         if len == 0 {
             return self.size_only(bucket, &key).await;
         }
@@ -622,7 +622,7 @@ impl Storage for S3Storage {
     }
 
     async fn upload_resumable(&self, src: &Path, dest: &RemotePath, resume: bool, progress: &Progress) -> Result<()> {
-        let (bucket, key) = split(dest, false).context("choisissez d'abord un bucket")?;
+        let (bucket, key) = split(dest, false).context(tr!("choisissez d'abord un bucket"))?;
         let size = tokio::fs::metadata(src).await?.len();
         if size <= MULTIPART_THRESHOLD {
             progress.set_done(0);
@@ -643,7 +643,7 @@ impl Storage for S3Storage {
 
     /// A ranged `GET` fetches only what the partial copy lacks.
     async fn download_resumable(&self, path: &RemotePath, partial: &Path, resume: bool, progress: &Progress) -> Result<()> {
-        let (bucket, key) = split(path, false).context("chemin de fichier invalide")?;
+        let (bucket, key) = split(path, false).context(tr!("chemin de fichier invalide"))?;
         let offset = if resume { super::local_len(partial).await } else { 0 };
         let mut request = self.client.get_object().bucket(bucket).key(key);
         if offset > 0 {
@@ -662,7 +662,7 @@ impl Storage for S3Storage {
             .truncate(offset == 0)
             .open(partial)
             .await
-            .with_context(|| format!("impossible d'écrire {}", partial.display()))?;
+            .with_context(|| tr!("impossible d'écrire {path}", path = partial.display()))?;
         if offset > 0 {
             file.set_len(offset).await?;
             file.seek(SeekFrom::Start(offset)).await?;
@@ -684,7 +684,7 @@ impl Storage for S3Storage {
 
     /// One listing of every key, which carries the dates already.
     async fn list_deep_dated(&self, path: &RemotePath) -> Result<Vec<DeepFile>> {
-        let (bucket, prefix) = split(path, true).context("choisissez d'abord un bucket")?;
+        let (bucket, prefix) = split(path, true).context(tr!("choisissez d'abord un bucket"))?;
         let mut files = Vec::new();
         let mut token = None;
         loop {
@@ -845,10 +845,10 @@ where
 {
     if let Some(service) = error.as_service_error() {
         return match (service.code(), service.message()) {
-            (Some(code), Some(message)) => anyhow!("{code} : {message}"),
+            (Some(code), Some(message)) => anyhow!(tr!("{code} : {message}", code, message)),
             (Some(code), None) => anyhow!("{code}"),
             (None, Some(message)) => anyhow!("{message}"),
-            (None, None) => anyhow!("le serveur a refusé la requête"),
+            (None, None) => anyhow!(tr!("le serveur a refusé la requête")),
         };
     }
 

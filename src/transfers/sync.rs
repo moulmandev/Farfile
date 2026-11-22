@@ -19,17 +19,17 @@ impl SyncDirection {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Upload => "Envoyer",
-            Self::Download => "Recevoir",
-            Self::Both => "Dans les deux sens",
+            Self::Upload => tr!("Envoyer"),
+            Self::Download => tr!("Recevoir"),
+            Self::Both => tr!("Dans les deux sens"),
         }
     }
 
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Upload => "Le dossier distant devient comme le dossier local.",
-            Self::Download => "Le dossier local devient comme le dossier distant.",
-            Self::Both => "Chaque fichier va du côté où il manque ou est plus ancien. Rien n'est supprimé.",
+            Self::Upload => tr!("Le dossier distant devient comme le dossier local."),
+            Self::Download => tr!("Le dossier local devient comme le dossier distant."),
+            Self::Both => tr!("Chaque fichier va du côté où il manque ou est plus ancien. Rien n'est supprimé."),
         }
     }
 
@@ -79,13 +79,13 @@ pub enum Reason {
 impl Reason {
     pub fn label(self, action: SyncAction) -> &'static str {
         match (self, action) {
-            (Self::New, _) => "Nouveau",
-            (Self::Changed, _) => "Modifié",
-            (Self::DestinationNewer, SyncAction::Upload) => "Plus récent à distance",
-            (Self::DestinationNewer, _) => "Plus récent en local",
-            (Self::Undecided, _) => "Différent, dates égales",
-            (Self::Orphan, SyncAction::DeleteRemote) => "Seulement à distance",
-            (Self::Orphan, _) => "Seulement en local",
+            (Self::New, _) => tr!("Nouveau"),
+            (Self::Changed, _) => tr!("Modifié"),
+            (Self::DestinationNewer, SyncAction::Upload) => tr!("Plus récent à distance"),
+            (Self::DestinationNewer, _) => tr!("Plus récent en local"),
+            (Self::Undecided, _) => tr!("Différent, dates égales"),
+            (Self::Orphan, SyncAction::DeleteRemote) => tr!("Seulement à distance"),
+            (Self::Orphan, _) => tr!("Seulement en local"),
         }
     }
 }

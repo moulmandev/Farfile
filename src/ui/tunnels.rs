@@ -60,9 +60,18 @@ fn kind_color(p: &Palette, kind: ForwardKind) -> Color32 {
 
 fn kind_hint(kind: ForwardKind) -> &'static str {
     match kind {
-        ForwardKind::Local => "ssh -L : un port de cet ordinateur mène à un service que le serveur atteint",
-        ForwardKind::Remote => "ssh -R : un port du serveur mène à un service que cet ordinateur atteint",
-        ForwardKind::Dynamic => "ssh -D : un proxy SOCKS dont les connexions sortent par le serveur",
+        ForwardKind::Local => tr!("ssh -L : un port de cet ordinateur mène à un service que le serveur atteint"),
+        ForwardKind::Remote => tr!("ssh -R : un port du serveur mène à un service que cet ordinateur atteint"),
+        ForwardKind::Dynamic => tr!("ssh -D : un proxy SOCKS dont les connexions sortent par le serveur"),
+    }
+}
+
+/// "Redirection locale", as the tooltip of a badge names it.
+fn kind_title(kind: ForwardKind) -> &'static str {
+    match kind {
+        ForwardKind::Local => tr!("Redirection locale"),
+        ForwardKind::Remote => tr!("Redirection distante"),
+        ForwardKind::Dynamic => tr!("Redirection dynamique"),
     }
 }
 
@@ -73,7 +82,7 @@ fn badge(ui: &mut Ui, p: &Palette, kind: ForwardKind) {
     ui.painter().rect_filled(rect, 5, tint.gamma_multiply(0.18));
     ui.painter()
         .text(rect.center(), Align2::CENTER_CENTER, kind.letter(), semibold(11.5), tint);
-    response.on_hover_text(format!("Redirection {} — {}", kind.label().to_lowercase(), kind_hint(kind)));
+    response.on_hover_text(format!("{} — {}", kind_title(kind), kind_hint(kind)));
 }
 
 fn dot(ui: &mut Ui, color: Color32) {
@@ -118,7 +127,7 @@ impl RuleEditor {
         let out_of_range = |text: &str| !text.is_empty() && text.parse::<u16>().is_err();
         let has_destination = self.rule.kind != ForwardKind::Dynamic;
         if out_of_range(&self.bind_port) || (has_destination && out_of_range(&self.dest_port)) {
-            return Some("Un port va de 1 à 65535");
+            return Some(tr!("Un port va de 1 à 65535"));
         }
         self.rule().problem()
     }
@@ -172,7 +181,7 @@ fn host_and_port(ui: &mut Ui, p: &Palette, label: &str, host: &mut String, port:
     ui.horizontal_top(|ui| {
         let host_width = width - PORT_WIDTH - ui.spacing().item_spacing.x;
         text_field(ui, p, label, TextEdit::singleline(host).hint_text(hints.0), host_width, false);
-        text_field(ui, p, "Port", TextEdit::singleline(port).hint_text(hints.1), PORT_WIDTH, false);
+        text_field(ui, p, tr!("Port"), TextEdit::singleline(port).hint_text(hints.1), PORT_WIDTH, false);
     });
     port.retain(|c| c.is_ascii_digit());
     port.truncate(5);
@@ -186,23 +195,34 @@ fn explanation(rule: &ForwardRule) -> String {
     } else {
         rule.listen()
     };
-    let destination = if rule.dest_host.trim().is_empty() || rule.dest_port == 0 {
-        "la destination".to_owned()
-    } else {
-        rule.destination()
-    };
-    match rule.kind {
-        ForwardKind::Local => format!(
+    let destination = (!rule.dest_host.trim().is_empty() && rule.dest_port != 0).then(|| rule.destination());
+    match (rule.kind, destination) {
+        (ForwardKind::Local, Some(destination)) => tr!(
             "Les connexions à {listen} sur cet ordinateur arrivent à {destination}, depuis le serveur. \
-             Pour atteindre une base de données ou un service interne."
+             Pour atteindre une base de données ou un service interne.",
+            listen,
+            destination
         ),
-        ForwardKind::Remote => format!(
+        (ForwardKind::Local, None) => tr!(
+            "Les connexions à {listen} sur cet ordinateur arrivent à la destination, depuis le serveur. \
+             Pour atteindre une base de données ou un service interne.",
+            listen
+        ),
+        (ForwardKind::Remote, Some(destination)) => tr!(
             "Le serveur ouvre le port {listen} ; ce qui s'y connecte arrive à {destination}, depuis cet \
-             ordinateur. Pour montrer au serveur un service qui tourne ici."
+             ordinateur. Pour montrer au serveur un service qui tourne ici.",
+            listen,
+            destination
         ),
-        ForwardKind::Dynamic => format!(
+        (ForwardKind::Remote, None) => tr!(
+            "Le serveur ouvre le port {listen} ; ce qui s'y connecte arrive à la destination, depuis cet \
+             ordinateur. Pour montrer au serveur un service qui tourne ici.",
+            listen
+        ),
+        (ForwardKind::Dynamic, _) => tr!(
             "Un proxy SOCKS5 sur {listen} : les applications réglées dessus sortent par le serveur, \
-             qui résout aussi les noms."
+             qui résout aussi les noms.",
+            listen
         ),
     }
 }
@@ -232,8 +252,8 @@ fn fields(ui: &mut Ui, p: &Palette, editor: &mut RuleEditor, width: f32, focus: 
     text_field(
         ui,
         p,
-        "Nom (facultatif)",
-        TextEdit::singleline(&mut editor.rule.name).hint_text("Base de données, Proxy…"),
+        tr!("Nom (facultatif)"),
+        TextEdit::singleline(&mut editor.rule.name).hint_text(tr!("Base de données, Proxy…")),
         width,
         focus,
     );
@@ -245,7 +265,7 @@ fn fields(ui: &mut Ui, p: &Palette, editor: &mut RuleEditor, width: f32, focus: 
             host_and_port(
                 ui,
                 p,
-                "Écoute sur cet ordinateur",
+                tr!("Écoute sur cet ordinateur"),
                 &mut rule.bind_host,
                 &mut editor.bind_port,
                 ("127.0.0.1", port),
@@ -255,7 +275,7 @@ fn fields(ui: &mut Ui, p: &Palette, editor: &mut RuleEditor, width: f32, focus: 
         ForwardKind::Remote => host_and_port(
             ui,
             p,
-            "Écoute sur le serveur (0.0.0.0 : toutes ses adresses)",
+            tr!("Écoute sur le serveur (0.0.0.0 : toutes ses adresses)"),
             &mut rule.bind_host,
             &mut editor.bind_port,
             ("127.0.0.1", "8080"),
@@ -266,16 +286,16 @@ fn fields(ui: &mut Ui, p: &Palette, editor: &mut RuleEditor, width: f32, focus: 
         ForwardKind::Local => host_and_port(
             ui,
             p,
-            "Destination, vue du serveur",
+            tr!("Destination, vue du serveur"),
             &mut rule.dest_host,
             &mut editor.dest_port,
-            ("db.interne ou 10.0.0.5", "5432"),
+            (tr!("db.interne ou 10.0.0.5"), "5432"),
             width,
         ),
         ForwardKind::Remote => host_and_port(
             ui,
             p,
-            "Destination, vue de cet ordinateur",
+            tr!("Destination, vue de cet ordinateur"),
             &mut rule.dest_host,
             &mut editor.dest_port,
             ("127.0.0.1", "3000"),
@@ -283,10 +303,10 @@ fn fields(ui: &mut Ui, p: &Palette, editor: &mut RuleEditor, width: f32, focus: 
         ),
         ForwardKind::Dynamic => {}
     }
-    checkbox(ui, p, &mut rule.auto_start, "Démarrer à l'ouverture de la connexion").on_hover_text(
+    checkbox(ui, p, &mut rule.auto_start, tr!("Démarrer à l'ouverture de la connexion")).on_hover_text(tr!(
         "Dès qu'un onglet de cette connexion s'ouvre. Le tunnel reste ouvert ensuite,\n\
-         même une fois l'onglet fermé, jusqu'à ce que vous l'arrêtiez.",
-    );
+         même une fois l'onglet fermé, jusqu'à ce que vous l'arrêtiez."
+    ));
 }
 
 /// The frame of the dialogs of the app.
@@ -347,14 +367,14 @@ pub fn form_section(ui: &mut Ui, p: &Palette, rules: &mut Vec<ForwardRule>, stat
     ui.add_space(2.0);
     ui.allocate_ui(vec2(width, 20.0), |ui| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("REDIRECTIONS DE PORTS").size(11.0).color(p.faint));
+            ui.label(RichText::new(tr!("REDIRECTIONS DE PORTS")).size(11.0).color(p.faint));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let add = Label::new(RichText::new(format!("{}  Ajouter", icon::PLUS)).size(12.5).color(p.accent))
-                    .sense(Sense::click());
+                let add = format!("{}  {}", icon::PLUS, tr!("Ajouter"));
+                let add = Label::new(RichText::new(add).size(12.5).color(p.accent)).sense(Sense::click());
                 if ui
                     .add(add)
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text("Tunnel local, distant, ou proxy SOCKS")
+                    .on_hover_text(tr!("Tunnel local, distant, ou proxy SOCKS"))
                     .clicked()
                 {
                     state.edit(rules, None);
@@ -364,7 +384,7 @@ pub fn form_section(ui: &mut Ui, p: &Palette, rules: &mut Vec<ForwardRule>, stat
     });
 
     if rules.is_empty() {
-        ui.label(small(p, "Aucune : tunnel local (-L), distant (-R) ou proxy SOCKS (-D)."));
+        ui.label(small(p, tr!("Aucune : tunnel local (-L), distant (-R) ou proxy SOCKS (-D).")));
     } else {
         let mut edit = None;
         let mut remove = None;
@@ -386,10 +406,10 @@ pub fn form_section(ui: &mut Ui, p: &Palette, rules: &mut Vec<ForwardRule>, stat
                     badge(&mut row, p, rule.kind);
                     row.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        if small_button(ui, p, icon::TRASH, "Retirer").clicked() {
+                        if small_button(ui, p, icon::TRASH, tr!("Retirer")).clicked() {
                             remove = Some(index);
                         }
-                        if small_button(ui, p, icon::PENCIL_SIMPLE, "Modifier…").clicked() {
+                        if small_button(ui, p, icon::PENCIL_SIMPLE, tr!("Modifier…")).clicked() {
                             edit = Some(index);
                         }
                         ui.add_space(4.0);
@@ -433,7 +453,7 @@ fn rule_line(ui: &mut Ui, p: &Palette, rule: &ForwardRule) {
         text.append(&rule.summary(), 8.0, faint.clone());
     }
     if rule.auto_start {
-        text.append("· auto", 6.0, faint);
+        text.append(tr!("· auto"), 6.0, faint);
     }
     ui.add(Label::new(text).truncate())
         .on_hover_text(rule.summary());
@@ -451,7 +471,7 @@ fn editor_dialog(ctx: &egui::Context, p: &Palette, rules: &mut Vec<ForwardRule>,
         .frame(dialog_frame(ctx, p))
         .show(ctx, |ui| {
             ui.set_width(EDITOR_WIDTH);
-            heading(ui, p, if is_new { "Nouvelle redirection" } else { "Modifier la redirection" });
+            heading(ui, p, if is_new { tr!("Nouvelle redirection") } else { tr!("Modifier la redirection") });
             fields(ui, p, editor, EDITOR_WIDTH, focus);
             let problem = editor.problem();
             if let Some(problem) = problem.filter(|_| !editor.bind_port.is_empty()) {
@@ -463,10 +483,10 @@ fn editor_dialog(ctx: &egui::Context, p: &Palette, rules: &mut Vec<ForwardRule>,
                 close = Some(true);
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if primary_button(ui, p, if is_new { "Ajouter" } else { "OK" }, problem.is_none()).clicked() {
+                if primary_button(ui, p, if is_new { tr!("Ajouter") } else { tr!("OK") }, problem.is_none()).clicked() {
                     close = Some(true);
                 }
-                if ui.button("Annuler").clicked() {
+                if ui.button(tr!("Annuler")).clicked() {
                     close = Some(false);
                 }
             });
@@ -505,7 +525,7 @@ impl RuleDialog {
 /// [`Outcome::ConfirmedAndConnect`].
 pub fn rule_dialog(ui: &mut Ui, p: &Palette, form: &mut RuleDialog, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(EDITOR_WIDTH);
-    heading(ui, p, if form.is_new { "Nouvelle redirection" } else { "Modifier la redirection" });
+    heading(ui, p, if form.is_new { tr!("Nouvelle redirection") } else { tr!("Modifier la redirection") });
     ui.label(small(p, format!("{}  {}", icon::TERMINAL_WINDOW, form.host)));
     ui.add_space(8.0);
     fields(ui, p, &mut form.editor, EDITOR_WIDTH, first_frame);
@@ -515,19 +535,19 @@ pub fn rule_dialog(ui: &mut Ui, p: &Palette, form: &mut RuleDialog, first_frame:
         ui.label(RichText::new(problem).size(12.0).color(p.muted));
     }
     ui.add_space(8.0);
-    ui.label(small(p, "Enregistrée avec la connexion."));
+    ui.label(small(p, tr!("Enregistrée avec la connexion.")));
     ui.add_space(12.0);
     if problem.is_none() && ui.input(|input| input.key_pressed(Key::Enter)) {
         *outcome = Outcome::ConfirmedAndConnect;
     }
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Enregistrer et démarrer", problem.is_none()).clicked() {
+        if primary_button(ui, p, tr!("Enregistrer et démarrer"), problem.is_none()).clicked() {
             *outcome = Outcome::ConfirmedAndConnect;
         }
-        if ui.add_enabled(problem.is_none(), Button::new("Enregistrer")).clicked() {
+        if ui.add_enabled(problem.is_none(), Button::new(tr!("Enregistrer"))).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -559,7 +579,7 @@ pub fn status(ui: &mut Ui, p: &Palette, view: &Overview<'_>, actions: &mut Vec<A
     ui.add_space(8.0);
     let response = ui
         .add(Button::new(RichText::new(format!("{GLYPH}  {text}")).size(12.0).color(color)).frame(false))
-        .on_hover_text("Tunnels SSH : redirections de ports des connexions");
+        .on_hover_text(tr!("Tunnels SSH : redirections de ports des connexions"));
     if ui.ctx().data_mut(|data| data.remove_temp::<bool>(unfold_id()).unwrap_or(false)) {
         Popup::open_id(ui.ctx(), Popup::default_response_id(&response));
     }
@@ -575,22 +595,20 @@ pub fn status(ui: &mut Ui, p: &Palette, view: &Overview<'_>, actions: &mut Vec<A
 /// What the button of the status bar says, and how loudly.
 fn chip(p: &Palette, counts: Counts) -> (String, Color32) {
     let mut parts = Vec::new();
-    match counts.active {
-        0 => {}
-        1 => parts.push("1 tunnel actif".to_owned()),
-        active => parts.push(format!("{active} tunnels actifs")),
+    if counts.active > 0 {
+        parts.push(trn!(counts.active, "{n} tunnel actif", "{n} tunnels actifs"));
     }
     if counts.reconnecting > 0 {
-        parts.push("reconnexion…".to_owned());
+        parts.push(tr!("reconnexion…").to_owned());
     } else if counts.connecting > 0 {
-        parts.push("connexion…".to_owned());
+        parts.push(tr!("connexion…").to_owned());
     }
     if counts.failed > 0 {
-        parts.push(format!("{} en erreur", counts.failed));
+        parts.push(trn!(counts.failed, "{n} en erreur", "{n} en erreur"));
     }
     let text = match (counts.active, parts.is_empty()) {
-        (_, true) => "Tunnels".to_owned(),
-        (0, false) => format!("Tunnels : {}", parts.join(" · ")),
+        (_, true) => tr!("Tunnels").to_owned(),
+        (0, false) => tr!("Tunnels : {parts}", parts = parts.join(" · ")),
         _ => parts.join(" · "),
     };
     let color = if counts.failed > 0 && counts.active == 0 {
@@ -608,9 +626,9 @@ fn chip(p: &Palette, counts: Counts) -> (String, Color32) {
 fn list(ui: &mut Ui, p: &Palette, view: &Overview<'_>, actions: &mut Vec<Action>) {
     ui.set_width(LIST_WIDTH);
     ui.spacing_mut().item_spacing.y = 2.0;
-    ui.label(RichText::new("Tunnels SSH").font(semibold(13.5)).color(p.text));
+    ui.label(RichText::new(tr!("Tunnels SSH")).font(semibold(13.5)).color(p.text));
     ui.label(
-        RichText::new("Ils restent ouverts quand vous fermez les onglets, et s'arrêtent en quittant l'application.")
+        RichText::new(tr!("Ils restent ouverts quand vous fermez les onglets, et s'arrêtent en quittant l'application."))
             .size(11.5)
             .color(p.muted),
     );
@@ -639,17 +657,18 @@ fn list(ui: &mut Ui, p: &Palette, view: &Overview<'_>, actions: &mut Vec<Action>
 /// What the link of a host is doing, in words and colour.
 fn link_text(p: &Palette, host: Option<&Host>) -> (String, Color32) {
     let Some(host) = host else {
-        return ("Arrêtés".to_owned(), p.faint);
+        return (tr!("Arrêtés").to_owned(), p.faint);
     };
     match host.link() {
-        Link::Connecting => ("Connexion…".to_owned(), p.muted),
-        Link::Connected => (format!("Connecté · {}", host.address), p.success),
+        Link::Connecting => (tr!("Connexion…").to_owned(), p.muted),
+        Link::Connected => (tr!("Connecté · {address}", address = host.address), p.success),
         Link::Lost { error, retry: Some(at) } => {
             let left = at.saturating_duration_since(Instant::now()).as_secs_f64().ceil();
-            (format!("Connexion perdue : {error}. Nouvel essai dans {}", format::duration(left)), p.folder)
+            let delay = format::duration(left);
+            (tr!("Connexion perdue : {error}. Nouvel essai dans {delay}", error, delay), p.folder)
         }
         Link::Lost { error, retry: None } => {
-            (format!("Connexion perdue : {error}. Reconnexion abandonnée."), p.danger)
+            (tr!("Connexion perdue : {error}. Reconnexion abandonnée.", error), p.danger)
         }
         Link::Failed(error) => (capitalized(&error), p.danger),
     }
@@ -676,13 +695,13 @@ fn host_block(ui: &mut Ui, p: &Palette, profile: &Profile, host: Option<&Host>, 
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             if host.is_some() {
-                if icon_button(ui, p, icon::STOP_CIRCLE, "Arrêter les tunnels de cette connexion", true).clicked() {
+                if icon_button(ui, p, icon::STOP_CIRCLE, tr!("Arrêter les tunnels de cette connexion"), true).clicked() {
                     actions.push(tunnels(TunnelAction::StopAll(id())));
                 }
-                if icon_button(ui, p, icon::ARROWS_CLOCKWISE, "Reconnecter", true).clicked() {
+                if icon_button(ui, p, icon::ARROWS_CLOCKWISE, tr!("Reconnecter"), true).clicked() {
                     actions.push(tunnels(TunnelAction::Reconnect(id())));
                 }
-            } else if icon_button(ui, p, icon::PLAY_CIRCLE, "Démarrer tous les tunnels de cette connexion", true).clicked() {
+            } else if icon_button(ui, p, icon::PLAY_CIRCLE, tr!("Démarrer tous les tunnels de cette connexion"), true).clicked() {
                 actions.push(tunnels(TunnelAction::StartAll(id())));
             }
             ui.add_space(6.0);
@@ -721,8 +740,8 @@ fn host_block(ui: &mut Ui, p: &Palette, profile: &Profile, host: Option<&Host>, 
 
     ui.horizontal(|ui| {
         ui.add_space(26.0);
-        let add = Label::new(RichText::new(format!("{}  Ajouter une redirection", icon::PLUS)).size(12.0).color(p.accent))
-            .sense(Sense::click());
+        let add = format!("{}  {}", icon::PLUS, tr!("Ajouter une redirection"));
+        let add = Label::new(RichText::new(add).size(12.0).color(p.accent)).sense(Sense::click());
         if ui.add(add).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
             actions.push(tunnels(TunnelAction::AskAdd(id())));
             ui.close();
@@ -752,21 +771,21 @@ fn rule_row(
         });
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            if icon_button(ui, p, icon::PENCIL_SIMPLE, "Modifier…", true).clicked() {
+            if icon_button(ui, p, icon::PENCIL_SIMPLE, tr!("Modifier…"), true).clicked() {
                 let (profile, rule) = ids();
                 actions.push(Action::Tunnels(TunnelAction::AskEdit(profile, rule)));
                 ui.close();
             }
             if run.is_some() {
-                if icon_button(ui, p, icon::ARROWS_CLOCKWISE, "Redémarrer", !down).clicked() {
+                if icon_button(ui, p, icon::ARROWS_CLOCKWISE, tr!("Redémarrer"), !down).clicked() {
                     let (profile, rule) = ids();
                     actions.push(Action::Tunnels(TunnelAction::Start(profile, rule)));
                 }
-                if icon_button(ui, p, icon::STOP_CIRCLE, "Arrêter", true).clicked() {
+                if icon_button(ui, p, icon::STOP_CIRCLE, tr!("Arrêter"), true).clicked() {
                     let (profile, rule) = ids();
                     actions.push(Action::Tunnels(TunnelAction::Stop(profile, rule)));
                 }
-            } else if icon_button(ui, p, icon::PLAY_CIRCLE, "Démarrer", true).clicked() {
+            } else if icon_button(ui, p, icon::PLAY_CIRCLE, tr!("Démarrer"), true).clicked() {
                 let (profile, rule) = ids();
                 actions.push(Action::Tunnels(TunnelAction::Start(profile, rule)));
             }
@@ -789,7 +808,7 @@ fn rule_row(
                 if let Some((_, _, Some((error, ago)))) = &run {
                     let when = format::duration(ago.as_secs_f64());
                     ui.add(
-                        Label::new(RichText::new(format!("Il y a {when} : {error}")).size(11.5).color(p.folder))
+                        Label::new(RichText::new(tr!("Il y a {when} : {error}", when, error)).size(11.5).color(p.folder))
                             .wrap(),
                     );
                 }
@@ -801,18 +820,22 @@ fn rule_row(
 
 fn state_text(p: &Palette, rule: &ForwardRule, run: Option<&RunView>) -> (Color32, String) {
     let Some((state, (open, total, sent, received), _)) = run else {
-        return (p.faint, "Arrêté".to_owned());
+        return (p.faint, tr!("Arrêté").to_owned());
     };
     match state {
-        RuleState::Waiting => (p.folder, "En attente de la connexion SSH".to_owned()),
-        RuleState::Starting => (p.muted, "Démarrage…".to_owned()),
+        RuleState::Waiting => (p.folder, tr!("En attente de la connexion SSH").to_owned()),
+        RuleState::Starting => (p.muted, tr!("Démarrage…").to_owned()),
         RuleState::Failed(error) => (p.danger, error.clone()),
         RuleState::Active(at) => {
-            let connections = format::count(*total as usize, "connexion", "connexions");
             let mut text = match (total, open) {
-                (0, _) => "Actif · aucune connexion".to_owned(),
-                (_, 0) => format!("Actif · {connections}"),
-                _ => format!("Actif · {connections}, dont {} en cours", open),
+                (0, _) => tr!("Actif · aucune connexion").to_owned(),
+                (_, 0) => trn!(*total, "Actif · {n} connexion", "Actif · {n} connexions"),
+                _ => trn!(
+                    *total,
+                    "Actif · {n} connexion, dont {open} en cours",
+                    "Actif · {n} connexions, dont {open} en cours",
+                    open
+                ),
             };
             // The port the server chose is worth knowing.
             if rule.kind == ForwardKind::Remote && rule.bind_port == 0 {
@@ -871,7 +894,7 @@ pub fn host_menu(ui: &mut Ui, profile: &Profile, actions: &mut Vec<Action>) {
     let state = menu_state(ui.ctx());
     let rules = state.rules.get(&profile.id).map(Vec::as_slice).unwrap_or_default();
     if rules.iter().any(|(_, running)| !running)
-        && item(ui, format!("{GLYPH}  Ouvrir uniquement les tunnels"))
+        && item(ui, format!("{GLYPH}  {}", tr!("Ouvrir uniquement les tunnels")))
     {
         actions.push(Action::Tunnels(TunnelAction::StartAll(profile.id.clone())));
     }
@@ -890,16 +913,16 @@ pub fn tab_menu(ui: &mut Ui, tab: &Tab, actions: &mut Vec<Action>) {
 
 fn submenu(ui: &mut Ui, profile_id: &str, rules: &[(ForwardRule, bool)], actions: &mut Vec<Action>) {
     let tunnels = |action| Action::Tunnels(action);
-    ui.menu_button(format!("{GLYPH}  Tunnels"), |ui| {
+    ui.menu_button(format!("{GLYPH}  {}", tr!("Tunnels")), |ui| {
         ui.set_min_width(240.0);
         for (rule, running) in rules {
             let mark = if *running { icon::CHECK } else { "    " };
             let clicked = ui
                 .button(format!("{mark}  {}", rule.title()))
                 .on_hover_text(if *running {
-                    format!("{} — cliquer pour l'arrêter", rule.summary())
+                    tr!("{summary} — cliquer pour l'arrêter", summary = rule.summary())
                 } else {
-                    format!("{} — cliquer pour le démarrer", rule.summary())
+                    tr!("{summary} — cliquer pour le démarrer", summary = rule.summary())
                 })
                 .clicked();
             if clicked {
@@ -918,17 +941,17 @@ fn submenu(ui: &mut Ui, profile_id: &str, rules: &[(ForwardRule, bool)], actions
         let some_running = rules.iter().any(|(_, running)| *running);
         if rules.len() > 1
             && rules.iter().any(|(_, running)| !running)
-            && item(ui, format!("{}  Démarrer tous les tunnels", icon::PLAY_CIRCLE))
+            && item(ui, format!("{}  {}", icon::PLAY_CIRCLE, tr!("Démarrer tous les tunnels")))
         {
             actions.push(tunnels(TunnelAction::StartAll(profile_id.to_owned())));
         }
-        if some_running && item(ui, format!("{}  Arrêter les tunnels", icon::STOP_CIRCLE)) {
+        if some_running && item(ui, format!("{}  {}", icon::STOP_CIRCLE, tr!("Arrêter les tunnels"))) {
             actions.push(tunnels(TunnelAction::StopAll(profile_id.to_owned())));
         }
-        if item(ui, format!("{}  Ajouter une redirection…", icon::PLUS)) {
+        if item(ui, format!("{}  {}", icon::PLUS, tr!("Ajouter une redirection…"))) {
             actions.push(tunnels(TunnelAction::AskAdd(profile_id.to_owned())));
         }
-        if some_running && item(ui, format!("{GLYPH}  Voir les tunnels actifs")) {
+        if some_running && item(ui, format!("{GLYPH}  {}", tr!("Voir les tunnels actifs"))) {
             actions.push(tunnels(TunnelAction::ShowList));
         }
     });

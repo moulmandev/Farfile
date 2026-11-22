@@ -83,18 +83,19 @@ pub enum VaultError {
 impl std::fmt::Display for VaultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotAVault => write!(f, "Ce fichier n'est pas une sauvegarde de connexions de Farfile."),
-            Self::TooNew(version) => write!(
-                f,
+            Self::NotAVault => f.write_str(tr!("Ce fichier n'est pas une sauvegarde de connexions de Farfile.")),
+            Self::TooNew(version) => f.write_str(&tr!(
                 "Cette sauvegarde vient d'une version plus récente de l'application (format {version}) : \
-                 mettez l'application à jour pour l'ouvrir."
-            ),
-            Self::Unsupported => write!(f, "Cette sauvegarde est chiffrée d'une façon que cette version ne connaît pas."),
-            Self::Damaged => write!(f, "Ce fichier est incomplet ou abîmé."),
-            Self::WrongPassword => write!(
-                f,
+                 mettez l'application à jour pour l'ouvrir.",
+                version
+            )),
+            Self::Unsupported => {
+                f.write_str(tr!("Cette sauvegarde est chiffrée d'une façon que cette version ne connaît pas."))
+            }
+            Self::Damaged => f.write_str(tr!("Ce fichier est incomplet ou abîmé.")),
+            Self::WrongPassword => f.write_str(tr!(
                 "Mot de passe incorrect, ou fichier modifié depuis l'export. Rien n'a été importé."
-            ),
+            )),
         }
     }
 }
@@ -201,8 +202,9 @@ fn derive(password: &str, salt: &[u8], kdf: KdfParams) -> Result<Zeroizing<[u8; 
 pub fn seal(plain: &[u8], password: &str, kdf: KdfParams) -> Result<Vec<u8>> {
     let mut salt = [0u8; SALT_LEN];
     let mut nonce = [0u8; NONCE_LEN];
-    getrandom::fill(&mut salt).map_err(|error| anyhow!("pas de source d'aléa : {error}"))?;
-    getrandom::fill(&mut nonce).map_err(|error| anyhow!("pas de source d'aléa : {error}"))?;
+    let no_randomness = |error: getrandom::Error| anyhow!(tr!("pas de source d'aléa : {error}", error));
+    getrandom::fill(&mut salt).map_err(no_randomness)?;
+    getrandom::fill(&mut nonce).map_err(no_randomness)?;
 
     let mut file = Vec::with_capacity(64 + plain.len() + TAG_LEN);
     file.extend_from_slice(MAGIC);
@@ -217,12 +219,13 @@ pub fn seal(plain: &[u8], password: &str, kdf: KdfParams) -> Result<Vec<u8>> {
     file.push(NONCE_LEN as u8);
     file.extend_from_slice(&nonce);
 
-    let key = derive(password, &salt, kdf).map_err(|error| anyhow!("dérivation de la clé impossible : {error}"))?;
-    let cipher = Aes256Gcm::new_from_slice(key.as_slice()).map_err(|_| anyhow!("clé de chiffrement invalide"))?;
+    let key = derive(password, &salt, kdf)
+        .map_err(|error| anyhow!(tr!("dérivation de la clé impossible : {error}", error)))?;
+    let cipher = Aes256Gcm::new_from_slice(key.as_slice()).map_err(|_| anyhow!(tr!("clé de chiffrement invalide")))?;
     let nonce = aes_gcm::aead::Nonce::<Aes256Gcm>::from(nonce);
     let sealed = cipher
         .encrypt(&nonce, Payload { msg: plain, aad: &file })
-        .map_err(|_| anyhow!("chiffrement impossible"))?;
+        .map_err(|_| anyhow!(tr!("chiffrement impossible")))?;
     file.extend_from_slice(&sealed);
     Ok(file)
 }
@@ -367,11 +370,11 @@ pub struct Strength(pub u8);
 impl Strength {
     pub fn label(self) -> &'static str {
         match self.0 {
-            0 => "Très faible",
-            1 => "Faible",
-            2 => "Moyen",
-            3 => "Bon",
-            _ => "Excellent",
+            0 => tr!("Très faible"),
+            1 => tr!("Faible"),
+            2 => tr!("Moyen"),
+            3 => tr!("Bon"),
+            _ => tr!("Excellent"),
         }
     }
 }

@@ -24,9 +24,9 @@ impl CursorShape {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Block => "Bloc",
-            Self::Bar => "Barre",
-            Self::Underline => "Souligné",
+            Self::Block => tr!("Bloc"),
+            Self::Bar => tr!("Barre"),
+            Self::Underline => tr!("Souligné"),
         }
     }
 }
@@ -118,7 +118,7 @@ pub struct Scheme {
 /// What the terminal always looked like with the dark theme of the app.
 const GRAPHITE: Scheme = Scheme {
     id: "graphite",
-    name: "Graphite",
+    name: tr_key!("Graphite"),
     dark: true,
     background: 0x0c0e11,
     foreground: 0xd3d7de,
@@ -134,7 +134,7 @@ const GRAPHITE: Scheme = Scheme {
 /// And with its light theme. "White" stays readable on the background.
 const NUAGE: Scheme = Scheme {
     id: "nuage",
-    name: "Nuage",
+    name: tr_key!("Nuage"),
     dark: false,
     background: 0xf6f7f9,
     foreground: 0x24292f,
@@ -152,7 +152,7 @@ pub const SCHEMES: [Scheme; 11] = [
     NUAGE,
     Scheme {
         id: "minuit",
-        name: "Minuit",
+        name: tr_key!("Minuit"),
         dark: true,
         background: 0x1a1b26,
         foreground: 0xc0caf5,
@@ -166,7 +166,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "ardoise",
-        name: "Ardoise",
+        name: tr_key!("Ardoise"),
         dark: true,
         background: 0x1f1f1f,
         foreground: 0xcccccc,
@@ -180,7 +180,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "braise",
-        name: "Braise",
+        name: tr_key!("Braise"),
         dark: true,
         background: 0x282828,
         foreground: 0xebdbb2,
@@ -194,7 +194,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "fjord",
-        name: "Fjord",
+        name: tr_key!("Fjord"),
         dark: true,
         background: 0x2e3440,
         foreground: 0xd8dee9,
@@ -208,7 +208,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "nocturne",
-        name: "Nocturne",
+        name: tr_key!("Nocturne"),
         dark: true,
         background: 0x282a36,
         foreground: 0xf8f8f2,
@@ -222,7 +222,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "lagon",
-        name: "Lagon",
+        name: tr_key!("Lagon"),
         dark: true,
         background: 0x002b36,
         foreground: 0x93a1a1,
@@ -236,7 +236,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "contraste",
-        name: "Contraste",
+        name: tr_key!("Contraste"),
         dark: true,
         background: 0x000000,
         foreground: 0xffffff,
@@ -250,7 +250,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "papier",
-        name: "Papier",
+        name: tr_key!("Papier"),
         dark: false,
         background: 0xfdf6e3,
         foreground: 0x4f5b62,
@@ -264,7 +264,7 @@ pub const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         id: "neige",
-        name: "Neige",
+        name: tr_key!("Neige"),
         dark: false,
         background: 0xffffff,
         foreground: 0x24292f,
@@ -289,8 +289,8 @@ pub fn scheme(id: &str, dark_app: bool) -> &'static Scheme {
 /// Choices shown to the user: "Automatique", then every scheme, the two it
 /// switches between included.
 pub fn choices() -> impl Iterator<Item = (&'static str, &'static str)> {
-    std::iter::once((AUTO_SCHEME, "Automatique"))
-        .chain(SCHEMES.iter().map(|scheme| (scheme.id, scheme.name)))
+    std::iter::once((AUTO_SCHEME, tr!("Automatique")))
+        .chain(SCHEMES.iter().map(|scheme| (scheme.id, crate::i18n::lookup(scheme.name))))
 }
 
 /// Where egui keeps the preferences for the frame, so that everything

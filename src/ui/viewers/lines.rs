@@ -227,7 +227,7 @@ fn log_row(ui: &mut Ui, p: &Palette, mono: &Mono, row: &LogRow<'_>, part: &str, 
         ui.painter().set(background, Shape::rect_filled(rect, 0, tint));
     }
     response.context_menu(|ui| {
-        if ui.button(format!("{}  Copier la ligne", crate::ui::widgets::icon::COPY_SIMPLE)).clicked() {
+        if ui.button(format!("{}  {}", crate::ui::widgets::icon::COPY_SIMPLE, tr!("Copier la ligne"))).clicked() {
             ui.ctx().copy_text(row.text.to_owned());
             ui.close();
         }

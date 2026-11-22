@@ -62,21 +62,21 @@ impl AuthMethod {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Auto => "Automatique",
-            Self::Password => "Mot de passe",
-            Self::Key => "Clé",
-            Self::Agent => "Agent SSH",
+            Self::Auto => tr!("Automatique"),
+            Self::Password => tr!("Mot de passe"),
+            Self::Key => tr!("Clé"),
+            Self::Agent => tr!("Agent SSH"),
         }
     }
 
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Auto => "La clé indiquée, l'agent SSH, les clés de ~/.ssh, puis le mot de passe.",
-            Self::Password => "Le mot de passe seul, même si une clé est indiquée.",
-            Self::Key => "La clé privée seule. Sa phrase secrète est demandée si elle n'est pas enregistrée.",
+            Self::Auto => tr!("La clé indiquée, l'agent SSH, les clés de ~/.ssh, puis le mot de passe."),
+            Self::Password => tr!("Le mot de passe seul, même si une clé est indiquée."),
+            Self::Key => tr!("La clé privée seule. Sa phrase secrète est demandée si elle n'est pas enregistrée."),
             Self::Agent => {
-                "Les clés de l'agent OpenSSH de Windows, de 1Password, de Bitwarden ou de Pageant. \
-                 Rien n'est enregistré ici."
+                tr!("Les clés de l'agent OpenSSH de Windows, de 1Password, de Bitwarden ou de Pageant. \
+                     Rien n'est enregistré ici.")
             }
         }
     }
@@ -222,10 +222,10 @@ impl Prompter {
                     }
                     return Ok(Some(decoded));
                 }
-                Err(_) => error = Some("Phrase secrète incorrecte, réessayez.".to_owned()),
+                Err(_) => error = Some(tr!("Phrase secrète incorrecte, réessayez.").to_owned()),
             }
         }
-        bail!("phrase secrète incorrecte pour la clé {}", key.display())
+        bail!(tr!("phrase secrète incorrecte pour la clé {key}", key = key.display()))
     }
 }
 
@@ -265,10 +265,10 @@ pub async fn authenticate(handle: &mut SshHandle, settings: &SshSettings) -> Res
     let result = try_methods(handle, settings).await;
     // A server that hangs up in the middle leaves only "channel send error".
     if result.is_err() && handle.is_closed() {
-        bail!(
+        bail!(tr!(
             "le serveur a coupé la connexion pendant l'authentification, après trop de clés \
              refusées ou à cause du réseau : choisissez une clé ou une méthode précise"
-        );
+        ));
     }
     result
 }
@@ -284,13 +284,13 @@ async fn try_methods(handle: &mut SshHandle, settings: &SshSettings) -> Result<(
         match &settings.key_path {
             Some(path) => match key_file(handle, settings, path, true, &mut offered).await? {
                 KeyAttempt::Accepted => return Ok(()),
-                KeyAttempt::Skipped => bail!("phrase secrète de la clé {} non saisie", path.display()),
+                KeyAttempt::Skipped => bail!(tr!("phrase secrète de la clé {key} non saisie", key = path.display())),
                 KeyAttempt::Refused if method == AuthMethod::Key => {
-                    bail!("le serveur a refusé la clé {} pour {user}", path.display())
+                    bail!(tr!("le serveur a refusé la clé {key} pour {user}", key = path.display(), user))
                 }
-                KeyAttempt::Refused => tried.push(format!("la clé {}", file_name(path))),
+                KeyAttempt::Refused => tried.push(tr!("la clé {name}", name = file_name(path))),
             },
-            None if method == AuthMethod::Key => bail!("aucune clé privée n'est indiquée pour cette connexion"),
+            None if method == AuthMethod::Key => bail!(tr!("aucune clé privée n'est indiquée pour cette connexion")),
             None => {}
         }
     }
@@ -306,18 +306,23 @@ async fn try_methods(handle: &mut SshHandle, settings: &SshSettings) -> Result<(
             Ok(mut agent) => match agent.authenticate(handle, user, limit, &mut offered).await {
                 Ok(agent::Attempt::Accepted) => return Ok(()),
                 Ok(agent::Attempt::Empty) if method == AuthMethod::Agent => {
-                    bail!("{} ne contient aucune clé : ajoutez-en une (ssh-add) puis réessayez", agent.name)
+                    bail!(tr!(
+                        "{agent} ne contient aucune clé : ajoutez-en une (ssh-add) puis réessayez",
+                        agent = agent.name
+                    ))
                 }
                 Ok(agent::Attempt::Empty) => {}
                 Ok(agent::Attempt::Refused { keys }) if method == AuthMethod::Agent => {
-                    bail!(
-                        "le serveur a refusé {} de {} pour {user}",
-                        if keys > 1 { format!("les {keys} clés") } else { "la clé".to_owned() },
-                        agent.name,
-                    )
+                    bail!(trn!(
+                        keys,
+                        "le serveur a refusé la clé de {agent} pour {user}",
+                        "le serveur a refusé les {n} clés de {agent} pour {user}",
+                        agent = agent.name,
+                        user,
+                    ))
                 }
                 Ok(agent::Attempt::Refused { keys }) => {
-                    tried.push(format!("l'agent SSH ({})", crate::format::count(keys, "clé", "clés")));
+                    tried.push(trn!(keys, "l'agent SSH ({n} clé)", "l'agent SSH ({n} clés)"));
                 }
                 Err(error) if method == AuthMethod::Agent => return Err(error),
                 // An agent that stops answering is passed over, like one
@@ -342,7 +347,7 @@ async fn try_methods(handle: &mut SshHandle, settings: &SshSettings) -> Result<(
             }
             match key_file(handle, settings, &path, false, &mut offered).await? {
                 KeyAttempt::Accepted => return Ok(()),
-                KeyAttempt::Refused => tried.push(format!("la clé {name}")),
+                KeyAttempt::Refused => tried.push(tr!("la clé {name}", name)),
                 KeyAttempt::Skipped => {}
             }
         }
@@ -357,24 +362,28 @@ async fn try_methods(handle: &mut SshHandle, settings: &SshSettings) -> Result<(
                     return Ok(());
                 }
                 if method == AuthMethod::Password {
-                    bail!("mot de passe refusé pour {}", settings.address());
+                    bail!(tr!("mot de passe refusé pour {address}", address = settings.address()));
                 }
-                tried.push("le mot de passe".to_owned());
+                tried.push(tr!("le mot de passe").to_owned());
             }
             None if method == AuthMethod::Password => {
-                bail!("aucun mot de passe n'est enregistré pour cette connexion")
+                bail!(tr!("aucun mot de passe n'est enregistré pour cette connexion"))
             }
             None => {}
         }
     }
 
     if tried.is_empty() {
-        bail!(
-            "authentification refusée pour {} : ni agent SSH, ni clé, ni mot de passe à proposer",
-            settings.address()
-        )
+        bail!(tr!(
+            "authentification refusée pour {address} : ni agent SSH, ni clé, ni mot de passe à proposer",
+            address = settings.address()
+        ))
     }
-    bail!("authentification refusée pour {} (essayé : {})", settings.address(), tried.join(", "))
+    bail!(tr!(
+        "authentification refusée pour {address} (essayé : {tried})",
+        address = settings.address(),
+        tried = tried.join(", ")
+    ))
 }
 
 /// A server that hangs up before saying anything is usually limiting the
@@ -382,10 +391,10 @@ async fn try_methods(handle: &mut SshHandle, settings: &SshSettings) -> Result<(
 /// "Disconnected" alone does not tell.
 pub fn explain_handshake(error: anyhow::Error) -> anyhow::Error {
     match error.downcast_ref::<russh::Error>() {
-        Some(russh::Error::Disconnect) => anyhow!(
+        Some(russh::Error::Disconnect) => anyhow!(tr!(
             "le serveur a coupé avant l'authentification ; il limite peut-être les tentatives \
              après des échecs récents depuis cet ordinateur : réessayez dans un instant"
-        ),
+        )),
         _ => error,
     }
 }
@@ -411,7 +420,7 @@ async fn key_file(
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if explicit => {
-            return Err(anyhow!(error)).with_context(|| format!("clé privée illisible ({})", path.display()));
+            return Err(anyhow!(error)).with_context(|| tr!("clé privée illisible ({path})", path = path.display()));
         }
         Err(_) => return Ok(KeyAttempt::Skipped),
     };
@@ -427,7 +436,7 @@ async fn key_file(
         }
         Err(error) if !encrypted => {
             if explicit {
-                return Err(anyhow!(error)).with_context(|| format!("clé privée illisible ({})", path.display()));
+                return Err(anyhow!(error)).with_context(|| tr!("clé privée illisible ({path})", path = path.display()));
             }
             return Ok(KeyAttempt::Skipped);
         }
@@ -438,12 +447,14 @@ async fn key_file(
         if !explicit {
             return Ok(KeyAttempt::Skipped);
         }
-        let why = if stored.is_some() {
-            "phrase secrète incorrecte"
-        } else {
-            "elle est protégée par une phrase secrète, à enregistrer dans la connexion"
-        };
-        bail!("clé privée illisible ({}) : {why}", path.display());
+        let path = path.display();
+        if stored.is_some() {
+            bail!(tr!("clé privée illisible ({path}) : phrase secrète incorrecte", path));
+        }
+        bail!(tr!(
+            "clé privée illisible ({path}) : elle est protégée par une phrase secrète, à enregistrer dans la connexion",
+            path
+        ));
     };
 
     // The keys of ~/.ssh belong to no connection: what is typed for them is
@@ -452,7 +463,7 @@ async fn key_file(
     if !explicit {
         extra.owner = Owner::Nobody;
     }
-    let stale = stored.map(|_| "La phrase secrète enregistrée ne convient pas : saisissez-la.".to_owned());
+    let stale = stored.map(|_| tr!("La phrase secrète enregistrée ne convient pas : saisissez-la.").to_owned());
 
     // Offered first, unlocked only if the server wants it.
     if let Some(public) = keys::public_half(path, &text) {
@@ -532,7 +543,7 @@ impl russh::Signer for Unlocking {
     ) -> Result<Vec<u8>> {
         let Some(key) = self.prompter.unlock(&self.key, &self.text, &self.extra, self.stale.take()).await? else {
             self.gave_up = true;
-            bail!("phrase secrète non saisie");
+            bail!(tr!("phrase secrète non saisie"));
         };
         keys::append_signature(&key, hash, &mut data)?;
         Ok(data)

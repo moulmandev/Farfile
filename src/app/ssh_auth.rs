@@ -144,9 +144,9 @@ impl App {
                 match found {
                     Some(identity) => extra.owner = Owner::Identity(identity.id.clone()),
                     None => {
-                        extra.problem = Some(format!(
-                            "l'identité de « {} » n'existe plus dans le trousseau : modifiez la connexion",
-                            profile.title()
+                        extra.problem = Some(tr!(
+                            "l'identité de « {name} » n'existe plus dans le trousseau : modifiez la connexion",
+                            name = profile.title()
                         ));
                     }
                 }
@@ -300,7 +300,7 @@ impl App {
                 let secret = self.profile_secret(&profile);
                 let settings = self.ssh_settings(&profile, &secret, None);
                 if let Some(problem) = &settings.extra.problem {
-                    self.toast(now, format!("Installation impossible : {problem}"), true);
+                    self.toast(now, tr!("Installation impossible : {error}", error = problem), true);
                     return;
                 }
                 let (account, user) = (settings.address(), settings.user.clone());
@@ -376,7 +376,7 @@ impl App {
                     let saved = self.persist_profiles();
                     self.report_save_error(saved, now);
                 }
-                self.toast(now, format!("Identité « {title} » supprimée"), false);
+                self.toast(now, tr!("Identité « {title} » supprimée", title), false);
                 self.refresh_parent(None);
             }
             AuthDialog::Passphrase(form) => {
@@ -394,13 +394,13 @@ impl App {
                 let line = match keys::public_line(&key, passphrase.as_deref()) {
                     Ok(line) => line,
                     Err(error) => {
-                        form.error = Some(format!("Clé publique introuvable : {error:#}"));
+                        form.error = Some(tr!("Clé publique introuvable : {error}", error = format!("{error:#}")));
                         self.dialog = Some(Dialog::SshAuth(AuthDialog::Install(form)));
                         return;
                     }
                 };
                 let Some(settings) = self.install_settings(&form.target) else {
-                    self.toast(now, "Cette connexion n'existe plus.", true);
+                    self.toast(now, tr!("Cette connexion n'existe plus."), true);
                     return;
                 };
                 let report = self.ssh_auth.reporter();
@@ -461,7 +461,7 @@ impl App {
         }
         if let Err(error) = stored {
             let mut form = IdentityForm::new(identity, false);
-            form.error = Some(format!("Secret non enregistré : {error:#}"));
+            form.error = Some(tr!("Secret non enregistré : {error}", error = format!("{error:#}")));
             self.dialog = Some(Dialog::SshAuth(AuthDialog::Identity(Box::new(form))));
             return;
         }
@@ -473,7 +473,7 @@ impl App {
         }
         let saved = keychain::save(&self.ssh_auth.identities);
         self.report_save_error(saved, now);
-        self.toast(now, format!("Identité « {title} » enregistrée"), false);
+        self.toast(now, tr!("Identité « {title} » enregistrée", title), false);
         self.refresh_parent(Some(&id));
     }
 
@@ -552,11 +552,11 @@ impl App {
                             identity.forget_passphrase = false;
                         }
                         let name = generated.private.file_name().unwrap_or_default().to_string_lossy();
-                        self.toast(now, format!("Clé {kind} créée : {name} et {name}.pub"), false);
+                        self.toast(now, tr!("Clé {kind} créée : {name} et {name}.pub", kind, name), false);
                     }
                     Err(error) => {
                         form.busy = false;
-                        form.error = Some(format!("Génération impossible : {error}"));
+                        form.error = Some(tr!("Génération impossible : {error}", error));
                     }
                 }
             }
@@ -573,14 +573,17 @@ impl App {
                     Err(error) => {
                         if showing && let Some(Dialog::SshAuth(AuthDialog::Install(form))) = &mut self.dialog {
                             form.busy = false;
-                            form.error = Some(format!("Installation impossible : {error}"));
+                            form.error = Some(tr!("Installation impossible : {error}", error));
                         } else {
-                            self.toast(now, format!("Installation de la clé impossible sur « {title} » : {error}"), true);
+                            let text = tr!("Installation de la clé impossible sur « {title} » : {error}", title, error);
+                            self.toast(now, text, true);
                         }
                         return;
                     }
-                    Ok(Installed::Added) => format!("Clé « {identity} » installée sur « {title} »"),
-                    Ok(Installed::AlreadyThere) => format!("La clé « {identity} » était déjà installée sur « {title} »"),
+                    Ok(Installed::Added) => tr!("Clé « {identity} » installée sur « {title} »", identity, title),
+                    Ok(Installed::AlreadyThere) => {
+                        tr!("La clé « {identity} » était déjà installée sur « {title} »", identity, title)
+                    }
                 };
                 if showing {
                     self.dialog = None;
@@ -594,7 +597,8 @@ impl App {
                     if let Some(profile) = profile_id.and_then(|pid| self.profiles.iter_mut().find(|p| p.id == pid)) {
                         profile.identity = identity_id;
                         profile.auth = AuthMethod::Auto;
-                        text.push_str(" ; la connexion l'utilise désormais");
+                        let said = tr!("{text} ; la connexion l'utilise désormais", text);
+                        text = said;
                         let saved = self.persist_profiles();
                         self.report_save_error(saved, now);
                     }
@@ -624,8 +628,11 @@ impl App {
             }
         };
         match result {
-            Ok(()) => self.toast(now, "Phrase secrète enregistrée", false),
-            Err(error) => self.toast(now, format!("Phrase secrète non enregistrée : {error:#}"), true),
+            Ok(()) => self.toast(now, tr!("Phrase secrète enregistrée"), false),
+            Err(error) => {
+                let error = format!("{error:#}");
+                self.toast(now, tr!("Phrase secrète non enregistrée : {error}", error), true);
+            }
         }
     }
 
@@ -678,7 +685,7 @@ impl App {
                 }
                 Some(IdentityRequest::CopyPublic(line)) => {
                     ctx.copy_text(line);
-                    self.toast(now, "Clé publique copiée", false);
+                    self.toast(now, tr!("Clé publique copiée"), false);
                 }
                 None => {}
             },
@@ -703,14 +710,14 @@ impl App {
     pub(super) fn link_jumps(&mut self, imported: &[(String, Option<String>)], now: f64) {
         let missing = jump::link_imported(&mut self.profiles, imported);
         if !missing.is_empty() {
-            self.toast(
-                now,
-                format!(
-                    "Serveur de rebond introuvable : « {} ». Importez-le, puis choisissez-le dans la connexion.",
-                    missing.join(" », « ")
-                ),
-                true,
+            let names: Vec<String> = missing.iter().map(|name| tr!("« {name} »", name)).collect();
+            let text = trn!(
+                missing.len(),
+                "Serveur de rebond introuvable : {names}. Importez-le, puis choisissez-le dans la connexion.",
+                "Serveur de rebond introuvable : {names}. Importez-le, puis choisissez-le dans la connexion.",
+                names = names.join(", ")
             );
+            self.toast(now, text, true);
         }
     }
 

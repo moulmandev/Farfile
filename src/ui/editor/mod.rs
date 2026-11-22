@@ -128,6 +128,11 @@ pub fn external_label(program: &str) -> String {
     launch::editor_label(program)
 }
 
+/// "Ouvrir dans le Bloc-notes", or in the program chosen as text editor.
+fn open_in(program: &str) -> String {
+    tr!("Ouvrir dans {program}", program = external_label(program))
+}
+
 /// The icon of a file, from its name.
 fn file_icon(name: &str, p: &Palette) -> (&'static str, Color32) {
     let entry = Entry { name: name.to_owned(), kind: EntryKind::File, ..Entry::default() };
@@ -176,40 +181,40 @@ fn show_file(ui: &mut Ui, p: &Palette, tab: &mut Tab, interactive: bool, actions
                 ui.add_space((ui.available_height() * 0.35).max(24.0));
                 ui.add(egui::Spinner::new().size(26.0).color(p.accent));
                 ui.add_space(6.0);
-                ui.label(muted(p, format!("Ouverture de « {name} »…")));
+                ui.label(muted(p, tr!("Ouverture de « {name} »…", name)));
             });
         }
         State::NotText => {
-            let hint = format!("{} qui ne se lisent pas comme des lettres.", format::size(editor.size));
-            placeholder(ui, p, icon::FILE_DASHED, p.faint, "Ce fichier n'est pas du texte", &hint);
+            let hint = tr!("{size} qui ne se lisent pas comme des lettres.", size = format::size(editor.size));
+            placeholder(ui, p, icon::FILE_DASHED, p.faint, tr!("Ce fichier n'est pas du texte"), &hint);
             ui.vertical_centered(|ui| {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     center_row(ui, 520.0);
-                    if ui.button(format!("{}  Ouvrir avec le programme associé", icon::ARROW_SQUARE_OUT)).clicked() {
+                    if ui.button(format!("{}  {}", icon::ARROW_SQUARE_OUT, tr!("Ouvrir avec le programme associé"))).clicked() {
                         push(actions, EditorAction::OpenWithSystem(id));
                     }
-                    if ui.button(format!("{}  Ouvrir dans {}", icon::PENCIL_SIMPLE, external_label(&external))).clicked() {
+                    if ui.button(format!("{}  {}", icon::PENCIL_SIMPLE, open_in(&external))).clicked() {
                         push(actions, EditorAction::OpenElsewhere(id));
                     }
-                    let kept = "Chaque octet est gardé tel quel à l'enregistrement";
-                    if ui.button("Afficher comme du texte").on_hover_text(kept).clicked() {
+                    let kept = tr!("Chaque octet est gardé tel quel à l'enregistrement");
+                    if ui.button(tr!("Afficher comme du texte")).on_hover_text(kept).clicked() {
                         push(actions, EditorAction::ForceText(id));
                     }
                 });
             });
         }
         State::Failed(error) => {
-            placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, &format!("Ouverture de « {name} » impossible"), "");
+            placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, &tr!("Ouverture de « {name} » impossible", name), "");
             ui.vertical_centered(|ui| {
                 ui.add(Label::new(muted(p, error)).wrap());
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     center_row(ui, 300.0);
-                    if ui.button(format!("{}  Réessayer", icon::ARROWS_CLOCKWISE)).clicked() {
+                    if ui.button(format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Réessayer"))).clicked() {
                         push(actions, EditorAction::Reload(id));
                     }
-                    if ui.button(format!("{}  Ouvrir dans {}", icon::PENCIL_SIMPLE, external_label(&external))).clicked() {
+                    if ui.button(format!("{}  {}", icon::PENCIL_SIMPLE, open_in(&external))).clicked() {
                         push(actions, EditorAction::OpenElsewhere(id));
                     }
                 });
@@ -314,14 +319,15 @@ fn header(
         ui.set_height(32.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            let menu = icon_button(ui, p, icon::DOTS_THREE, "Plus d'actions", true);
+            let menu = icon_button(ui, p, icon::DOTS_THREE, tr!("Plus d'actions"), true);
             Popup::menu(&menu).show(|ui| more_menu(ui, p, editor, id, prefs, external, actions));
             if editor.is_ready() {
-                let wrap = if prefs.wrap { "Ne plus revenir à la ligne" } else { "Retour automatique à la ligne" };
+                let wrap = if prefs.wrap { tr!("Ne plus revenir à la ligne") } else { tr!("Retour automatique à la ligne") };
                 if toggle_icon(ui, p, icon::ARROW_U_DOWN_LEFT, wrap, prefs.wrap).clicked() {
                     push(actions, EditorAction::Prefs(EditorPrefs { wrap: !prefs.wrap, ..prefs.clone() }));
                 }
-                if toggle_icon(ui, p, icon::MAGNIFYING_GLASS, "Rechercher (Ctrl+F), remplacer (Ctrl+H)", editor.find.open).clicked() {
+                let find = tr!("Rechercher (Ctrl+F), remplacer (Ctrl+H)");
+                if toggle_icon(ui, p, icon::MAGNIFYING_GLASS, find, editor.find.open).clicked() {
                     if editor.find.open {
                         editor.find.open = false;
                     } else {
@@ -330,12 +336,13 @@ fn header(
                 }
                 ui.add_space(6.0);
                 let dirty = editor.is_dirty();
+                let label = format!("{}  {}", icon::FLOPPY_DISK, tr!("Enregistrer"));
                 let save = if dirty {
-                    primary_button(ui, p, &format!("{}  Enregistrer", icon::FLOPPY_DISK), editor.saving != Saving::Running)
+                    primary_button(ui, p, &label, editor.saving != Saving::Running)
                 } else {
-                    ui.add_enabled(false, Button::new(format!("{}  Enregistrer", icon::FLOPPY_DISK)))
+                    ui.add_enabled(false, Button::new(label))
                 };
-                if save.on_hover_text("Ctrl+S").on_disabled_hover_text("Aucune modification").clicked() {
+                if save.on_hover_text(tr!("Ctrl+S")).on_disabled_hover_text(tr!("Aucune modification")).clicked() {
                     push(actions, EditorAction::Save(id));
                 }
                 ui.add_space(6.0);
@@ -365,19 +372,19 @@ fn toggle_icon(ui: &mut Ui, p: &Palette, glyph: &str, tooltip: &str, on: bool) -
 fn save_state(ui: &mut Ui, p: &Palette, editor: &Editor, now: f64) {
     match &editor.saving {
         Saving::Running => {
-            ui.label(small(p, "Enregistrement…"));
+            ui.label(small(p, tr!("Enregistrement…")));
             ui.add(egui::Spinner::new().size(13.0).color(p.accent));
         }
         Saving::Failed(error) => {
-            let text = RichText::new(format!("{}  Échec de l'enregistrement", icon::WARNING_CIRCLE));
+            let text = RichText::new(format!("{}  {}", icon::WARNING_CIRCLE, tr!("Échec de l'enregistrement")));
             ui.add(Label::new(text.size(12.5).color(p.danger))).on_hover_text(error);
         }
         Saving::Done(at) if now - at < SAVED_SHOWN && !editor.is_dirty() => {
-            ui.label(RichText::new(format!("{}  Enregistré", icon::CHECK)).size(12.5).color(p.success));
+            ui.label(RichText::new(format!("{}  {}", icon::CHECK, tr!("Enregistré"))).size(12.5).color(p.success));
             ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(SAVED_SHOWN - (now - at) + 0.05));
         }
         _ if editor.is_dirty() => {
-            ui.label(RichText::new("● Modifié").size(12.5).color(p.folder));
+            ui.label(RichText::new(format!("● {}", tr!("Modifié"))).size(12.5).color(p.folder));
         }
         _ => {}
     }
@@ -397,56 +404,56 @@ fn more_menu(ui: &mut Ui, p: &Palette, editor: &mut Editor, id: u64, prefs: &Edi
         clicked
     };
     if editor.is_ready() {
-        if item(ui, format!("{}  Rechercher", icon::MAGNIFYING_GLASS), "Ctrl+F") {
+        if item(ui, format!("{}  {}", icon::MAGNIFYING_GLASS, trc!("éditeur", "Rechercher")), tr!("Ctrl+F")) {
             push(actions, EditorAction::Find(id, false));
         }
-        if item(ui, format!("{}  Remplacer", icon::SWAP), "Ctrl+H") {
+        if item(ui, format!("{}  {}", icon::SWAP, tr!("Remplacer")), tr!("Ctrl+H")) {
             push(actions, EditorAction::Find(id, true));
         }
-        if item(ui, format!("{}  Aller à la ligne…", icon::ARROW_BEND_DOWN_RIGHT), "Ctrl+G") {
+        if item(ui, format!("{}  {}", icon::ARROW_BEND_DOWN_RIGHT, tr!("Aller à la ligne…")), tr!("Ctrl+G")) {
             push(actions, EditorAction::GoToLine(id));
         }
         ui.separator();
     }
-    if item(ui, format!("{}  Recharger depuis le serveur", icon::ARROWS_CLOCKWISE), "") {
+    if item(ui, format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Recharger depuis le serveur")), "") {
         push(actions, EditorAction::Reload(id));
     }
-    if item(ui, format!("{}  Ouvrir dans {}", icon::ARROW_SQUARE_OUT, external_label(external)), "") {
+    if item(ui, format!("{}  {}", icon::ARROW_SQUARE_OUT, open_in(external)), "") {
         push(actions, EditorAction::OpenElsewhere(id));
     }
     ui.separator();
     let mut whitespace = prefs.whitespace;
-    if checkbox(ui, p, &mut whitespace, "Afficher les espaces et tabulations").clicked() {
+    if checkbox(ui, p, &mut whitespace, tr!("Afficher les espaces et tabulations")).clicked() {
         push(actions, EditorAction::Prefs(EditorPrefs { whitespace, ..prefs.clone() }));
     }
     let mut wrap = prefs.wrap;
-    if checkbox(ui, p, &mut wrap, "Retour automatique à la ligne").clicked() {
+    if checkbox(ui, p, &mut wrap, tr!("Retour automatique à la ligne")).clicked() {
         push(actions, EditorAction::Prefs(EditorPrefs { wrap, ..prefs.clone() }));
     }
-    ui.menu_button(format!("{}  Thème", icon::PALETTE), |ui| {
+    ui.menu_button(format!("{}  {}", icon::PALETTE, tr!("Thème")), |ui| {
         ui.set_min_width(240.0);
         for (theme, label) in THEMES {
             let mark = if prefs.theme == theme { icon::CHECK } else { "    " };
-            if ui.button(format!("{mark}  {label}")).clicked() {
+            if ui.button(format!("{mark}  {}", crate::i18n::lookup(label))).clicked() {
                 push(actions, EditorAction::Prefs(EditorPrefs { theme: theme.to_owned(), ..prefs.clone() }));
                 ui.close();
             }
         }
     });
     ui.horizontal(|ui| {
-        ui.label(format!("{}  Taille du texte", icon::TEXT_AA));
+        ui.label(format!("{}  {}", icon::TEXT_AA, tr!("Taille du texte")));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.small_button("+").on_hover_text("Ctrl+= ou Ctrl+molette").clicked() {
+            if ui.small_button("+").on_hover_text(tr!("Ctrl+= ou Ctrl+molette")).clicked() {
                 push(actions, EditorAction::Zoom(1));
             }
             ui.label(format!("{:.0}", prefs.font_size));
-            if ui.small_button("−").on_hover_text("Ctrl+-").clicked() {
+            if ui.small_button("−").on_hover_text(tr!("Ctrl+-")).clicked() {
                 push(actions, EditorAction::Zoom(-1));
             }
         });
     });
     ui.separator();
-    if item(ui, format!("{}  Préférences de l'éditeur…", icon::GEAR), "") {
+    if item(ui, format!("{}  {}", icon::GEAR, tr!("Préférences de l'éditeur…")), "") {
         push(actions, EditorAction::ChooseEditor);
     }
 }
@@ -460,8 +467,9 @@ fn banner(ui: &mut Ui, p: &Palette, editor: &Editor, id: u64, actions: &mut Vec<
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(icon::INFO).color(p.folder));
-                ui.label(small(p, format!("Fins de ligne mélangées : la plupart en {}.", editor.ending.label())));
-                if ui.small_button(format!("Tout convertir en {}", editor.ending.label())).clicked() {
+                let ending = editor.ending.label();
+                ui.label(small(p, tr!("Fins de ligne mélangées : la plupart en {ending}.", ending)));
+                if ui.small_button(tr!("Tout convertir en {ending}", ending)).clicked() {
                     push(actions, EditorAction::SetEnding(id, editor.ending));
                 }
             });
@@ -480,43 +488,46 @@ pub(super) fn context_menu(ui: &mut Ui, editor: &mut Editor, actions: &mut Vec<A
         }
         clicked
     };
-    if item(ui, editor.history.can_undo(), format!("{}  Annuler", icon::ARROW_COUNTER_CLOCKWISE), "Ctrl+Z") {
+    // "Annuler" alone is the Cancel of the dialogs; here it is Undo.
+    let undo = format!("{}  {}", icon::ARROW_COUNTER_CLOCKWISE, trc!("édition", "Annuler"));
+    if item(ui, editor.history.can_undo(), undo, tr!("Ctrl+Z")) {
         editor.undo();
     }
-    if item(ui, editor.history.can_redo(), format!("{}  Rétablir", icon::ARROW_CLOCKWISE), "Ctrl+Y") {
+    if item(ui, editor.history.can_redo(), format!("{}  {}", icon::ARROW_CLOCKWISE, tr!("Rétablir")), tr!("Ctrl+Y")) {
         editor.redo();
     }
     ui.separator();
-    if item(ui, true, format!("{}  Couper", icon::SCISSORS), "Ctrl+X") {
+    if item(ui, true, format!("{}  {}", icon::SCISSORS, tr!("Couper")), tr!("Ctrl+X")) {
         let text = editor.cut();
         ui.ctx().copy_text(text);
     }
-    if item(ui, true, format!("{}  Copier", icon::COPY), "Ctrl+C") {
+    if item(ui, true, format!("{}  {}", icon::COPY, tr!("Copier")), tr!("Ctrl+C")) {
         ui.ctx().copy_text(editor.copied());
     }
-    if item(ui, true, format!("{}  Coller", icon::CLIPBOARD_TEXT), "Ctrl+V") {
+    if item(ui, true, format!("{}  {}", icon::CLIPBOARD_TEXT, tr!("Coller")), tr!("Ctrl+V")) {
         // The backend answers with a paste event, which the text takes in
         // like Ctrl+V.
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
         editor.view.focus = true;
     }
-    if item(ui, selected, format!("{}  Supprimer", icon::BACKSPACE), "Suppr") {
+    if item(ui, selected, format!("{}  {}", icon::BACKSPACE, tr!("Supprimer")), tr!("Suppr")) {
         editor.delete();
     }
-    if item(ui, true, format!("{}  Tout sélectionner", icon::SELECTION_ALL), "Ctrl+A") {
+    if item(ui, true, format!("{}  {}", icon::SELECTION_ALL, tr!("Tout sélectionner")), tr!("Ctrl+A")) {
         editor.select_all();
     }
     ui.separator();
-    if item(ui, true, format!("{}  Commenter / décommenter", icon::CHAT_CENTERED_SLASH), "Ctrl+/") {
+    if item(ui, true, format!("{}  {}", icon::CHAT_CENTERED_SLASH, tr!("Commenter / décommenter")), tr!("Ctrl+/")) {
         editor.toggle_comment();
     }
-    if item(ui, true, format!("{}  Dupliquer", icon::COPY_SIMPLE), "Ctrl+D") {
+    if item(ui, true, format!("{}  {}", icon::COPY_SIMPLE, tr!("Dupliquer")), tr!("Ctrl+D")) {
         editor.duplicate();
     }
-    if item(ui, true, format!("{}  Supprimer la ligne", icon::MINUS_CIRCLE), "Ctrl+Maj+K") {
+    if item(ui, true, format!("{}  {}", icon::MINUS_CIRCLE, tr!("Supprimer la ligne")), tr!("Ctrl+Maj+K")) {
         editor.delete_lines();
     }
-    if selected && item(ui, true, format!("{}  Rechercher la sélection", icon::MAGNIFYING_GLASS), "Ctrl+F") {
+    let find = format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher la sélection"));
+    if selected && item(ui, true, find, tr!("Ctrl+F")) {
         editor.open_find(false);
     }
     let _ = actions;
@@ -541,27 +552,28 @@ pub fn file_menu(ui: &mut Ui, entry: &Entry, editor: &str, actions: &mut Vec<Act
     };
     // What the system would run is only ever opened as text.
     if launch::kind(&entry.name) == launch::Kind::Document {
-        open(ui, format!("{}  Ouvrir", icon::ARROW_SQUARE_OUT), Launch::Default, actions);
+        open(ui, format!("{}  {}", icon::ARROW_SQUARE_OUT, tr!("Ouvrir")), Launch::Default, actions);
     }
     let edit = if prefs.builtin {
-        format!("{}  Modifier", icon::PENCIL_SIMPLE)
+        format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Modifier"))
     } else {
-        format!("{}  Modifier dans {}", icon::PENCIL_SIMPLE, external_label(editor))
+        format!("{}  {}", icon::PENCIL_SIMPLE, tr!("Modifier dans {program}", program = external_label(editor)))
     };
     open(ui, edit, Launch::Editor, actions);
     if prefs.builtin {
-        action(ui, format!("{}  Modifier à côté", icon::COLUMNS), EditorAction::OpenBeside(entry.name.clone()), actions);
+        let beside = format!("{}  {}", icon::COLUMNS, tr!("Modifier à côté"));
+        action(ui, beside, EditorAction::OpenBeside(entry.name.clone()), actions);
     }
-    ui.menu_button(format!("{}  Ouvrir avec", icon::APP_WINDOW), |ui| {
+    ui.menu_button(format!("{}  {}", icon::APP_WINDOW, tr!("Ouvrir avec")), |ui| {
         ui.set_min_width(230.0);
-        let builtin_mark = if prefs.builtin { " (par défaut)" } else { "" };
-        action(ui, format!("Éditeur intégré{builtin_mark}"), EditorAction::OpenBuiltin(entry.name.clone()), actions);
-        let external_mark = if prefs.builtin { "" } else { " (par défaut)" };
-        let external = format!("{}{external_mark}", capitalized(&external_label(editor)));
+        let builtin = if prefs.builtin { tr!("Éditeur intégré (par défaut)") } else { tr!("Éditeur intégré") };
+        action(ui, builtin.to_owned(), EditorAction::OpenBuiltin(entry.name.clone()), actions);
+        let program = capitalized(&external_label(editor));
+        let external = if prefs.builtin { program } else { tr!("{program} (par défaut)", program) };
         action(ui, external, EditorAction::OpenExternal(entry.name.clone()), actions);
-        open(ui, "Choisir un programme…".to_owned(), Launch::Choose, actions);
+        open(ui, tr!("Choisir un programme…").to_owned(), Launch::Choose, actions);
         ui.separator();
-        action(ui, "Changer l'éditeur par défaut…".to_owned(), EditorAction::ChooseEditor, actions);
+        action(ui, tr!("Changer l'éditeur par défaut…").to_owned(), EditorAction::ChooseEditor, actions);
     });
 }
 
@@ -584,13 +596,13 @@ pub fn tab_menu(ui: &mut Ui, tab: &Tab, actions: &mut Vec<Action>) {
         }
         clicked
     };
-    if item(ui, editor.is_dirty(), format!("{}  Enregistrer", icon::FLOPPY_DISK), "Ctrl+S") {
+    if item(ui, editor.is_dirty(), format!("{}  {}", icon::FLOPPY_DISK, tr!("Enregistrer")), tr!("Ctrl+S")) {
         push(actions, EditorAction::Save(id));
     }
-    if item(ui, true, format!("{}  Recharger depuis le serveur", icon::ARROWS_CLOCKWISE), "") {
+    if item(ui, true, format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Recharger depuis le serveur")), "") {
         push(actions, EditorAction::Reload(id));
     }
-    if item(ui, true, format!("{}  Ouvrir dans {}", icon::ARROW_SQUARE_OUT, external_label(&external)), "") {
+    if item(ui, true, format!("{}  {}", icon::ARROW_SQUARE_OUT, open_in(&external)), "") {
         push(actions, EditorAction::OpenElsewhere(id));
     }
 }
@@ -601,9 +613,9 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
     let Some(editor) = tab.editor.as_ref().filter(|editor| editor.is_ready()) else {
         if let Some(editor) = &tab.editor {
             let text = match &editor.state {
-                State::Loading => "Ouverture…".to_owned(),
-                State::NotText => format!("Fichier binaire · {}", format::size(editor.size)),
-                State::Failed(_) => "Ouverture impossible".to_owned(),
+                State::Loading => tr!("Ouverture…").to_owned(),
+                State::NotText => tr!("Fichier binaire · {size}", size = format::size(editor.size)),
+                State::Failed(_) => tr!("Ouverture impossible").to_owned(),
                 State::Ready => String::new(),
             };
             ui.label(small(p, text));
@@ -613,20 +625,27 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
     let id = tab.id;
     let head = editor.sel.head;
     let column = crate::editor::layout::cells(&editor.doc.line(head.line)[..head.col], editor.tab_width()) + 1;
-    let mut text = format!("Ln {}, Col {column}", crate::editor::thousands(head.line + 1));
+    let mut text = tr!("Ln {line}, Col {column}", line = crate::editor::thousands(head.line + 1), column);
     if !editor.sel.is_empty() {
         let selected = editor.selected_text();
         let chars = selected.chars().count();
         let lines = selected.matches('\n').count();
+        let count = crate::editor::thousands(chars);
+        // The French keeps its plural for one, as it always did ("1
+        // sélectionnés", "1 lignes" below); the other languages count.
+        text.push_str("  ");
         text.push_str(&if lines > 0 {
-            format!("  ({} sélectionnés, {} lignes)", crate::editor::thousands(chars), lines + 1)
+            let lines = lines + 1;
+            trn!(chars, "({count} sélectionnés, {lines} lignes)", "({count} sélectionnés, {lines} lignes)", count, lines)
         } else {
-            format!("  ({} sélectionnés)", crate::editor::thousands(chars))
+            trn!(chars, "({count} sélectionnés)", "({count} sélectionnés)", count)
         });
     }
     ui.label(small(p, text));
     ui.add_space(10.0);
-    ui.label(small(p, format!("{} lignes", crate::editor::thousands(editor.doc.line_count()))));
+    let lines = editor.doc.line_count();
+    let count = crate::editor::thousands(lines);
+    ui.label(small(p, trn!(lines, "{count} lignes", "{count} lignes", count)));
     ui.add_space(10.0);
 
     // A script opens one of the menus by its name (see `dev_menu_id`).
@@ -641,18 +660,18 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
     // The language, with a search field: there are two hundred of them.
     let mut label = editor.language().name.clone();
     if editor.highlight.is_off() && label != syntax::plain_text().name {
-        label.push_str(" (sans couleurs : fichier trop gros)");
+        label = tr!("{language} (sans couleurs : fichier trop gros)", language = label);
     }
-    let language = menu_button(ui, label, "Langage, pour les couleurs", "language");
+    let language = menu_button(ui, label, tr!("Langage, pour les couleurs"), "language");
     Popup::menu(&language)
         .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| language_menu(ui, p, editor, id, actions));
 
-    let indent = menu_button(ui, editor.indent.label(), "Indentation", "indent");
+    let indent = menu_button(ui, editor.indent.label(), tr!("Indentation"), "indent");
     Popup::menu(&indent).show(|ui| {
         ui.set_min_width(220.0);
-        ui.label(small(p, "Indenter avec"));
-        for (tabs, label) in [(false, "Des espaces"), (true, "Des tabulations")] {
+        ui.label(small(p, tr!("Indenter avec")));
+        for (tabs, label) in [(false, tr!("Des espaces")), (true, tr!("Des tabulations"))] {
             let mark = if editor.indent.tabs == tabs { icon::CHECK } else { "    " };
             if ui.button(format!("{mark}  {label}")).clicked() {
                 push(actions, EditorAction::SetIndent(id, Indent { tabs, width: editor.indent.width }));
@@ -660,7 +679,7 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
             }
         }
         ui.separator();
-        ui.label(small(p, "Largeur"));
+        ui.label(small(p, tr!("Largeur")));
         for width in [2, 3, 4, 8] {
             let mark = if editor.indent.width == width { icon::CHECK } else { "    " };
             if ui.button(format!("{mark}  {width}")).clicked() {
@@ -670,10 +689,10 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
         }
     });
 
-    let encoding = menu_button(ui, editor.encoding.label().to_owned(), "Encodage", "encoding");
+    let encoding = menu_button(ui, editor.encoding.label().to_owned(), tr!("Encodage"), "encoding");
     Popup::menu(&encoding).show(|ui| {
         ui.set_min_width(230.0);
-        ui.label(small(p, "Enregistrer en"));
+        ui.label(small(p, tr!("Enregistrer en")));
         for choice in ENCODINGS {
             let mark = if editor.encoding == choice { icon::CHECK } else { "    " };
             if ui.button(format!("{mark}  {}", choice.label())).clicked() {
@@ -682,10 +701,11 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
             }
         }
         ui.separator();
-        ui.menu_button("Rouvrir en", |ui| {
+        ui.menu_button(tr!("Rouvrir en"), |ui| {
             ui.set_min_width(170.0);
+            let again = tr!("Relit le fichier depuis le serveur avec cet encodage");
             for choice in ENCODINGS {
-                if ui.button(choice.label()).on_hover_text("Relit le fichier depuis le serveur avec cet encodage").clicked() {
+                if ui.button(choice.label()).on_hover_text(again).clicked() {
                     push(actions, EditorAction::ReopenAs(id, choice));
                     ui.close();
                 }
@@ -693,8 +713,9 @@ pub fn status(ui: &mut Ui, p: &Palette, tab: &Tab, actions: &mut Vec<Action>) {
         });
     });
 
-    let ending = if editor.mixed { format!("{} (mixte)", editor.ending.label()) } else { editor.ending.label().to_owned() };
-    let endings = menu_button(ui, ending, "Fins de ligne", "ending");
+    let ending = editor.ending.label();
+    let ending = if editor.mixed { tr!("{ending} (mixte)", ending) } else { ending.to_owned() };
+    let endings = menu_button(ui, ending, tr!("Fins de ligne"), "ending");
     Popup::menu(&endings).show(|ui| {
         ui.set_min_width(200.0);
         for choice in LineEnding::ALL {
@@ -716,7 +737,7 @@ fn language_menu(ui: &mut Ui, p: &Palette, editor: &Editor, id: u64, actions: &m
     ui.set_width(240.0);
     let filter_id = ui.id().with("language-filter");
     let mut filter: String = ui.data(|data| data.get_temp(filter_id)).unwrap_or_default();
-    let field = ui.add(egui::TextEdit::singleline(&mut filter).hint_text("Rechercher un langage").desired_width(f32::INFINITY));
+    let field = ui.add(egui::TextEdit::singleline(&mut filter).hint_text(tr!("Rechercher un langage")).desired_width(f32::INFINITY));
     if !field.has_focus() && filter.is_empty() {
         field.request_focus();
     }
@@ -745,21 +766,21 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut EditorDialog, first_frame: 
         EditorDialog::Unsaved { names, quitting, unsent, choice, .. } => unsaved(ui, p, names, *quitting, *unsent, choice, outcome),
         EditorDialog::Changed { name, choice, .. } => {
             ui.set_width(420.0);
-            title(ui, p, &format!("« {name} » a changé sur le serveur"));
-            let text = "Quelqu'un l'a modifié depuis que vous l'avez ouvert (sa taille ou sa date ne sont plus les mêmes).\n\
-                        Écraser remplace sa version par la vôtre ; recharger remplace la vôtre par la sienne.";
+            title(ui, p, &tr!("« {name} » a changé sur le serveur", name));
+            let text = tr!("Quelqu'un l'a modifié depuis que vous l'avez ouvert (sa taille ou sa date ne sont plus les mêmes).\n\
+                        Écraser remplace sa version par la vôtre ; recharger remplace la vôtre par la sienne.");
             ui.add(Label::new(muted(p, text)).wrap());
             ui.add_space(14.0);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if super::widgets::danger_button(ui, p, "Écraser").clicked() {
+                if super::widgets::danger_button(ui, p, tr!("Écraser")).clicked() {
                     *choice = Some(ChangedChoice::Overwrite);
                     *outcome = Outcome::Confirmed;
                 }
-                if ui.button("Recharger").on_hover_text("Vos modifications seront perdues").clicked() {
+                if ui.button(tr!("Recharger")).on_hover_text(tr!("Vos modifications seront perdues")).clicked() {
                     *choice = Some(ChangedChoice::Reload);
                     *outcome = Outcome::Confirmed;
                 }
-                if ui.button("Annuler").clicked() {
+                if ui.button(tr!("Annuler")).clicked() {
                     *outcome = Outcome::Cancelled;
                 }
             });
@@ -767,40 +788,41 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut EditorDialog, first_frame: 
         EditorDialog::Reload { name, .. } => ask(
             ui,
             p,
-            "Recharger depuis le serveur ?",
-            &format!("Les modifications de « {name} » qui ne sont pas enregistrées seront perdues."),
-            "Recharger",
+            tr!("Recharger depuis le serveur ?"),
+            &tr!("Les modifications de « {name} » qui ne sont pas enregistrées seront perdues.", name),
+            tr!("Recharger"),
             true,
             outcome,
         ),
         EditorDialog::Unencodable { encoding, c, line, .. } => ask(
             ui,
             p,
-            "Enregistrer en UTF-8 ?",
-            &format!(
-                "Le caractère « {c} » (ligne {}) n'existe pas en {}. En UTF-8, tous les caractères peuvent être enregistrés.",
-                *line + 1,
-                encoding.label()
+            tr!("Enregistrer en UTF-8 ?"),
+            &tr!(
+                "Le caractère « {c} » (ligne {line}) n'existe pas en {encoding}. En UTF-8, tous les caractères peuvent être enregistrés.",
+                c,
+                line = *line + 1,
+                encoding = encoding.label()
             ),
-            "Enregistrer en UTF-8",
+            tr!("Enregistrer en UTF-8"),
             false,
             outcome,
         ),
         EditorDialog::Refused { name, why, external, choice } => {
             ui.set_width(400.0);
-            title(ui, p, &format!("« {name} » ne s'ouvre pas dans l'éditeur"));
+            title(ui, p, &tr!("« {name} » ne s'ouvre pas dans l'éditeur", name));
             ui.add(Label::new(muted(p, why.as_str())).wrap());
             ui.add_space(14.0);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if primary_button(ui, p, &format!("Ouvrir dans {}", external_label(external)), true).clicked() {
+                if primary_button(ui, p, &open_in(external), true).clicked() {
                     *choice = Some(RefusedChoice::External);
                     *outcome = Outcome::Confirmed;
                 }
-                if ui.button(format!("{}  Aperçu", icon::EYE)).clicked() {
+                if ui.button(format!("{}  {}", icon::EYE, tr!("Aperçu"))).clicked() {
                     *choice = Some(RefusedChoice::Preview);
                     *outcome = Outcome::Confirmed;
                 }
-                if ui.button("Annuler").clicked() {
+                if ui.button(tr!("Annuler")).clicked() {
                     *outcome = Outcome::Cancelled;
                 }
             });
@@ -831,7 +853,7 @@ fn ask(ui: &mut Ui, p: &Palette, heading: &str, body: &str, action: &str, destru
         if confirmed {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -848,20 +870,23 @@ fn unsaved(
 ) {
     ui.set_width(420.0);
     let heading = match (names, quitting) {
-        ([only], false) => format!("Enregistrer « {only} » ?"),
-        ([_], true) => "Enregistrer avant de quitter ?".to_owned(),
-        (many, _) => format!("Enregistrer les modifications de {} fichiers ?", many.len()),
+        ([only], false) => tr!("Enregistrer « {only} » ?", only),
+        ([_], true) => tr!("Enregistrer avant de quitter ?").to_owned(),
+        (many, _) => tr!("Enregistrer les modifications de {count} fichiers ?", count = many.len()),
     };
     title(ui, p, &heading);
     let mut body = if names.len() == 1 {
-        format!("« {} » a des modifications qui ne sont pas enregistrées. Sans enregistrement, elles seront perdues.", names[0])
+        let name = &names[0];
+        tr!("« {name} » a des modifications qui ne sont pas enregistrées. Sans enregistrement, elles seront perdues.", name)
     } else {
-        "Ces fichiers ont des modifications qui ne sont pas enregistrées. Sans enregistrement, elles seront perdues.".to_owned()
+        tr!("Ces fichiers ont des modifications qui ne sont pas enregistrées. Sans enregistrement, elles seront perdues.").to_owned()
     };
     if unsent > 0 {
-        body.push_str(&format!(
-            "\n{} ouvert(s) dans un autre programme n'a (n'ont) pas été renvoyé(s) : sa copie locale est conservée une semaine.",
-            format::count(unsent, "fichier", "fichiers")
+        body.push('\n');
+        body.push_str(&trn!(
+            unsent,
+            "{n} fichier ouvert(s) dans un autre programme n'a (n'ont) pas été renvoyé(s) : sa copie locale est conservée une semaine.",
+            "{n} fichiers ouvert(s) dans un autre programme n'a (n'ont) pas été renvoyé(s) : sa copie locale est conservée une semaine."
         ));
     }
     ui.add(Label::new(muted(p, body)).wrap());
@@ -871,7 +896,7 @@ fn unsaved(
             ui.label(RichText::new(format!("•  {name}")).color(p.text));
         }
         if names.len() > 8 {
-            ui.label(small(p, format!("et {} autres", names.len() - 8)));
+            ui.label(small(p, trn!(names.len() - 8, "et {n} autres", "et {n} autres")));
         }
     }
     ui.add_space(14.0);
@@ -881,21 +906,21 @@ fn unsaved(
     }
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         let save = match (names.len(), quitting) {
-            (1, false) => "Enregistrer",
-            (1, true) => "Enregistrer et quitter",
-            (_, false) => "Tout enregistrer",
-            (_, true) => "Tout enregistrer et quitter",
+            (1, false) => tr!("Enregistrer"),
+            (1, true) => tr!("Enregistrer et quitter"),
+            (_, false) => tr!("Tout enregistrer"),
+            (_, true) => tr!("Tout enregistrer et quitter"),
         };
         if primary_button(ui, p, &format!("{}  {save}", icon::FLOPPY_DISK), true).clicked() {
             *choice = Some(CloseChoice::Save);
             *outcome = Outcome::Confirmed;
         }
-        let discard = if quitting { "Quitter sans enregistrer" } else { "Ne pas enregistrer" };
+        let discard = if quitting { tr!("Quitter sans enregistrer") } else { tr!("Ne pas enregistrer") };
         if ui.button(RichText::new(discard).color(p.danger)).clicked() {
             *choice = Some(CloseChoice::Discard);
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -904,22 +929,23 @@ fn unsaved(
 fn choice_form(ui: &mut Ui, p: &Palette, form: &mut ChoiceForm, first_frame: bool, outcome: &mut Outcome) {
     let _ = first_frame;
     ui.set_width(460.0);
-    title(ui, p, "Éditeur de texte");
-    ui.label(small(p, "Les fichiers texte s'ouvrent dans"));
+    title(ui, p, tr!("Éditeur de texte"));
+    ui.label(small(p, tr!("Les fichiers texte s'ouvrent dans")));
     ui.add_space(2.0);
-    radio(ui, p, &mut form.builtin, true, "L'éditeur intégré", "Coloration, recherche, enregistrement direct sur le serveur");
-    let copied = "Le fichier est copié sur cet ordinateur, puis renvoyé à chaque enregistrement";
-    radio(ui, p, &mut form.builtin, false, "Un autre programme", copied);
+    let direct = tr!("Coloration, recherche, enregistrement direct sur le serveur");
+    radio(ui, p, &mut form.builtin, true, tr!("L'éditeur intégré"), direct);
+    let copied = tr!("Le fichier est copié sur cet ordinateur, puis renvoyé à chaque enregistrement");
+    radio(ui, p, &mut form.builtin, false, tr!("Un autre programme"), copied);
     ui.add_enabled_ui(!form.builtin, |ui| {
         ui.horizontal(|ui| {
             ui.add_space(26.0);
             ui.add(
                 egui::TextEdit::singleline(&mut form.program)
-                    .hint_text(if cfg!(windows) { "Vide pour le Bloc-notes" } else { "Vide pour l'éditeur du système" })
+                    .hint_text(if cfg!(windows) { tr!("Vide pour le Bloc-notes") } else { tr!("Vide pour l'éditeur du système") })
                     .desired_width(300.0)
                     .margin(egui::Margin::symmetric(8, 5)),
             );
-            if ui.button("Parcourir…").clicked() {
+            if ui.button(tr!("Parcourir…")).clicked() {
                 form.browse = true;
             }
         });
@@ -927,53 +953,53 @@ fn choice_form(ui: &mut Ui, p: &Palette, form: &mut ChoiceForm, first_frame: boo
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(6.0);
-    ui.label(RichText::new("Éditeur intégré").font(semibold(14.0)).color(p.text));
+    ui.label(RichText::new(tr!("Éditeur intégré")).font(semibold(14.0)).color(p.text));
     ui.add_space(4.0);
     egui::Grid::new("editor-prefs").num_columns(2).spacing(vec2(12.0, 8.0)).show(ui, |ui| {
-        ui.label(small(p, "Thème"));
+        ui.label(small(p, tr!("Thème")));
         egui::ComboBox::from_id_salt("editor-theme")
             .width(240.0)
             .selected_text(syntax::theme_label(&form.prefs.theme))
             .show_ui(ui, |ui| {
                 for (id, label) in THEMES {
-                    ui.selectable_value(&mut form.prefs.theme, id.to_owned(), label);
+                    ui.selectable_value(&mut form.prefs.theme, id.to_owned(), crate::i18n::lookup(label));
                 }
             });
         ui.end_row();
-        ui.label(small(p, "Police"));
+        ui.label(small(p, tr!("Police")));
         let fonts = crate::terminal_ext::fonts::catalog();
         if fonts.is_none() {
             crate::terminal_ext::fonts::scan_in_background(ui.ctx());
         }
-        let shown = if form.prefs.font.is_empty() { "Par défaut".to_owned() } else { form.prefs.font.clone() };
+        let shown = if form.prefs.font.is_empty() { tr!("Par défaut").to_owned() } else { form.prefs.font.clone() };
         egui::ComboBox::from_id_salt("editor-font").width(240.0).selected_text(shown).show_ui(ui, |ui| {
-            ui.selectable_value(&mut form.prefs.font, String::new(), "Par défaut");
+            ui.selectable_value(&mut form.prefs.font, String::new(), tr!("Par défaut"));
             for family in fonts.unwrap_or_default() {
                 ui.selectable_value(&mut form.prefs.font, family.name.clone(), &family.name);
             }
         });
         ui.end_row();
-        ui.label(small(p, "Taille"));
+        ui.label(small(p, tr!("Taille")));
         ui.add(egui::Slider::new(&mut form.prefs.font_size, MIN_FONT_SIZE..=MAX_FONT_SIZE).step_by(0.5).suffix(" pt"));
         ui.end_row();
-        ui.label(small(p, "Tabulation"));
+        ui.label(small(p, tr!("Tabulation")));
         ui.horizontal(|ui| {
             for width in [2, 4, 8] {
-                ui.selectable_value(&mut form.prefs.tab_width, width, format!("{width} colonnes"));
+                ui.selectable_value(&mut form.prefs.tab_width, width, tr!("{width} colonnes", width));
             }
         });
         ui.end_row();
     });
     ui.add_space(4.0);
-    checkbox(ui, p, &mut form.prefs.spaces, "Indenter avec des espaces quand le fichier ne dit rien");
-    checkbox(ui, p, &mut form.prefs.wrap, "Retour automatique à la ligne");
-    checkbox(ui, p, &mut form.prefs.whitespace, "Afficher les espaces et les tabulations");
+    checkbox(ui, p, &mut form.prefs.spaces, tr!("Indenter avec des espaces quand le fichier ne dit rien"));
+    checkbox(ui, p, &mut form.prefs.wrap, tr!("Retour automatique à la ligne"));
+    checkbox(ui, p, &mut form.prefs.whitespace, tr!("Afficher les espaces et les tabulations"));
     ui.add_space(14.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Enregistrer", true).clicked() {
+        if primary_button(ui, p, tr!("Enregistrer"), true).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

@@ -13,7 +13,7 @@ use super::App;
 use crate::dev;
 use crate::file_ops::{
     self as model, Change, Clipboard, ClipboardView, Dragged, Existing, Mode, OpsEvent, Picked, Plan, Renaming, Scope,
-    Sizing, check_name, describe, moved_path, refuse, toggle_bookmark,
+    Sizing, check_name, moved_path, permissions_label, refuse, toggle_bookmark,
 };
 use crate::session::Session;
 use crate::storage::ops::Tally;
@@ -38,11 +38,13 @@ fn known_names(session: &Session) -> Option<HashMap<String, bool>> {
 
 /// What the status bar says while a plan runs.
 fn plan_label(plan: &Plan) -> String {
-    let what = describe(&plan.items);
-    match (plan.rename_to.is_some(), plan.mode) {
-        (true, _) => format!("Renommage de {what}"),
-        (false, Mode::Move) => format!("Déplacement de {what}"),
-        (false, Mode::Copy) => format!("Copie de {what}"),
+    match (&plan.items[..], plan.rename_to.is_some(), plan.mode) {
+        ([only], true, _) => tr!("Renommage de « {name} »", name = only.path.name()),
+        ([only], false, Mode::Move) => tr!("Déplacement de « {name} »", name = only.path.name()),
+        ([only], false, Mode::Copy) => tr!("Copie de « {name} »", name = only.path.name()),
+        (many, true, _) => tr!("Renommage de {count} éléments", count = many.len()),
+        (many, false, Mode::Move) => tr!("Déplacement de {count} éléments", count = many.len()),
+        (many, false, Mode::Copy) => tr!("Copie de {count} éléments", count = many.len()),
     }
 }
 
@@ -144,7 +146,7 @@ impl App {
         }
         let ops = storage.operations();
         if !(if copy { ops.copy } else { ops.rename }) {
-            self.toast(now, "Ce type de connexion ne le permet pas.", true);
+            self.toast(now, tr!("Ce type de connexion ne le permet pas."), true);
             return;
         }
         let plan = Plan {
@@ -223,7 +225,7 @@ impl App {
         }
         let mut places = Vec::new();
         if let Some(parent) = session.path.parent() {
-            places.push(("Dossier parent".to_owned(), parent.to_string()));
+            places.push((tr!("Dossier parent").to_owned(), parent.to_string()));
         }
         for bookmark in &session.file_ops.bookmarks {
             places.push((bookmark.name.clone(), bookmark.path.clone()));
@@ -251,7 +253,7 @@ impl App {
         }
         let ops = session.storage.operations();
         if !(if cut { ops.rename } else { ops.copy }) {
-            self.toast(now, "Ce type de connexion ne permet pas de copier sur le serveur.", true);
+            self.toast(now, tr!("Ce type de connexion ne permet pas de copier sur le serveur."), true);
             return;
         }
         let text = items.iter().map(|item| item.path.to_string()).collect::<Vec<_>>().join("\n");
@@ -275,13 +277,13 @@ impl App {
             return;
         };
         if !session.writable() {
-            return self.toast(now, "Ouvrez d'abord un bucket pour y coller.", true);
+            return self.toast(now, tr!("Ouvrez d'abord un bucket pour y coller."), true);
         }
         let same_storage = storage_key(&clipboard.storage) == session.storage_key();
         if !same_storage && clipboard.connection != session.file_ops.connection {
-            let text = format!(
-                "Ces éléments viennent de « {} » : coller d'une connexion à une autre n'est pas encore possible ici.",
-                clipboard.origin
+            let text = tr!(
+                "Ces éléments viennent de « {origin} » : coller d'une connexion à une autre n'est pas encore possible ici.",
+                origin = clipboard.origin
             );
             return self.toast(now, text, true);
         }
@@ -439,9 +441,9 @@ impl App {
         self.edit_bookmarks(&profile_id, now, |bookmarks| added = toggle_bookmark(bookmarks, &path, &title));
         let name = if path.is_root() { title } else { path.name().to_owned() };
         let text = if added {
-            format!("« {name} » ajouté aux signets")
+            tr!("« {name} » ajouté aux signets", name)
         } else {
-            format!("« {name} » retiré des signets")
+            tr!("« {name} » retiré des signets", name)
         };
         self.toast(now, text, false);
     }
@@ -794,7 +796,7 @@ impl App {
                 if mode.is_none() && owner.is_none() {
                     return;
                 }
-                let label = format!("Permissions de {}", describe(&form.items));
+                let label = permissions_label(&form.items);
                 let job = self.file_ops.start_job(label, form.items.len(), now);
                 let change = Change {
                     storage: form.storage.clone(),

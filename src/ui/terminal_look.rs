@@ -47,7 +47,7 @@ impl LookForm {
             std::num::NonZeroU16::new(120).unwrap_or(std::num::NonZeroU16::MIN),
             0,
         );
-        preview.process(SAMPLE.as_bytes());
+        preview.process(sample().as_bytes());
         Self {
             draft: prefs.clone(),
             fonts: None,
@@ -101,6 +101,14 @@ const SAMPLE: &str = concat!(
     "\x1b[1;32mdev@serveur\x1b[0m:\x1b[1;34m~/site\x1b[0m$ ",
 );
 
+/// [`SAMPLE`] in the language in use: the name of its server, and the word
+/// of its log line.
+fn sample() -> String {
+    SAMPLE
+        .replace("@serveur", &format!("@{}", tr!("serveur")))
+        .replace(" voir ", &format!(" {} ", tr!("voir")))
+}
+
 /// Draws either dialog.
 pub fn show(ui: &mut Ui, p: &Palette, dialog: &mut TerminalDialog, outcome: &mut Outcome) {
     match dialog {
@@ -133,13 +141,17 @@ fn row(ui: &mut Ui, p: &Palette, label: &str, content: impl FnOnce(&mut Ui)) {
 
 fn look_form(ui: &mut Ui, p: &Palette, form: &mut LookForm, outcome: &mut Outcome) {
     ui.set_width(WIDTH);
-    title(ui, p, "Apparence du terminal");
+    title(ui, p, tr!("Apparence du terminal"));
     preview(ui, p, form);
     ui.add_space(10.0);
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        for (page, label) in [(Page::Look, "Couleurs et texte"), (Page::Behaviour, "Souris, historique et journaux")] {
+        let pages = [
+            (Page::Look, tr!("Couleurs et texte")),
+            (Page::Behaviour, tr!("Souris, historique et journaux")),
+        ];
+        for (page, label) in pages {
             let selected = form.page == page;
             let text = RichText::new(label).color(if selected { p.on_accent } else { p.text });
             let mut button = Button::new(text);
@@ -168,14 +180,14 @@ fn look_form(ui: &mut Ui, p: &Palette, form: &mut LookForm, outcome: &mut Outcom
 
     ui.add_space(14.0);
     ui.horizontal(|ui| {
-        if ui.button("Valeurs par défaut").clicked() {
+        if ui.button(tr!("Valeurs par défaut")).clicked() {
             form.draft = TerminalPrefs::default();
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if primary_button(ui, p, "Enregistrer", true).clicked() {
+            if primary_button(ui, p, tr!("Enregistrer"), true).clicked() {
                 *outcome = Outcome::Confirmed;
             }
-            if ui.button("Annuler").clicked() {
+            if ui.button(tr!("Annuler")).clicked() {
                 *outcome = Outcome::Cancelled;
             }
         });
@@ -191,19 +203,19 @@ enum Page {
 }
 
 fn look_page(ui: &mut Ui, p: &Palette, form: &mut LookForm) {
-    section(ui, p, "Couleurs");
+    section(ui, p, tr!("Couleurs"));
     schemes(ui, p, &mut form.draft.scheme);
 
-    section(ui, p, "Texte");
+    section(ui, p, tr!("Texte"));
     let installed = font_names(ui.ctx(), form).map(<[String]>::to_vec);
     let draft = &mut form.draft;
-    let default = format!("Par défaut ({})", fonts::default_font_name());
-    row(ui, p, "Police", |ui| {
+    let default = tr!("Par défaut ({name})", name = fonts::default_font_name());
+    row(ui, p, tr!("Police"), |ui| {
         let current = match draft.font.as_str() {
             "" => default.clone(),
-            BUILTIN_FONT => format!("{BUILTIN_FONT} (intégrée)"),
+            BUILTIN_FONT => tr!("{font} (intégrée)", font = BUILTIN_FONT),
             name if installed.as_ref().is_none_or(|fonts| fonts.iter().any(|font| font == name)) => name.to_owned(),
-            name => format!("{name} (introuvable)"),
+            name => tr!("{name} (introuvable)", name),
         };
         ComboBox::from_id_salt("terminal-font")
             .selected_text(current)
@@ -211,7 +223,8 @@ fn look_page(ui: &mut Ui, p: &Palette, form: &mut LookForm) {
             .height(320.0)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut draft.font, String::new(), default.as_str());
-                ui.selectable_value(&mut draft.font, BUILTIN_FONT.to_owned(), format!("{BUILTIN_FONT} (intégrée)"));
+                let builtin = tr!("{font} (intégrée)", font = BUILTIN_FONT);
+                ui.selectable_value(&mut draft.font, BUILTIN_FONT.to_owned(), builtin);
                 ui.separator();
                 match &installed {
                     Some(fonts) => {
@@ -220,13 +233,13 @@ fn look_page(ui: &mut Ui, p: &Palette, form: &mut LookForm) {
                         }
                     }
                     None => {
-                        ui.label(muted(p, "Recherche des polices installées…"));
+                        ui.label(muted(p, tr!("Recherche des polices installées…")));
                     }
                 }
             });
         ui.add_space(12.0);
-        ui.label(RichText::new("Taille").color(p.muted));
-        if ui.add(Button::new(icon::MINUS).min_size(vec2(28.0, 28.0))).on_hover_text("Ctrl+-").clicked() {
+        ui.label(RichText::new(tr!("Taille")).color(p.muted));
+        if ui.add(Button::new(icon::MINUS).min_size(vec2(28.0, 28.0))).on_hover_text(tr!("Ctrl+-")).clicked() {
             draft.font_size = draft.zoomed(-1);
         }
         ui.add(
@@ -236,11 +249,11 @@ fn look_page(ui: &mut Ui, p: &Palette, form: &mut LookForm) {
                 .custom_formatter(|size, _| format!("{} pt", super::terminal_ext::format_size(size as f32)))
                 .custom_parser(|text| text.trim_end_matches("pt").trim().replace(',', ".").parse().ok()),
         );
-        if ui.add(Button::new(icon::PLUS).min_size(vec2(28.0, 28.0))).on_hover_text("Ctrl+=").clicked() {
+        if ui.add(Button::new(icon::PLUS).min_size(vec2(28.0, 28.0))).on_hover_text(tr!("Ctrl+=")).clicked() {
             draft.font_size = draft.zoomed(1);
         }
     });
-    row(ui, p, "Curseur", |ui| {
+    row(ui, p, tr!("Curseur"), |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         for shape in CursorShape::ALL {
             let selected = draft.cursor == shape;
@@ -254,13 +267,13 @@ fn look_page(ui: &mut Ui, p: &Palette, form: &mut LookForm) {
             }
         }
         ui.add_space(12.0);
-        checkbox(ui, p, &mut draft.cursor_blink, "Clignotant");
+        checkbox(ui, p, &mut draft.cursor_blink, tr!("Clignotant"));
     });
 }
 
 fn behaviour_page(ui: &mut Ui, p: &Palette, draft: &mut TerminalPrefs) {
-    section(ui, p, "Historique");
-    row(ui, p, "Lignes gardées", |ui| {
+    section(ui, p, tr!("Historique"));
+    row(ui, p, tr!("Lignes gardées"), |ui| {
         ComboBox::from_id_salt("terminal-scrollback")
             .selected_text(lines(draft.scrollback_lines()))
             .width(150.0)
@@ -269,18 +282,20 @@ fn behaviour_page(ui: &mut Ui, p: &Palette, draft: &mut TerminalPrefs) {
                     ui.selectable_value(&mut draft.scrollback, choice, lines(choice));
                 }
             });
-        ui.label(small(p, "pour les terminaux ouverts ensuite"));
+        ui.label(small(p, tr!("pour les terminaux ouverts ensuite")));
     });
 
-    section(ui, p, "Souris et presse-papiers");
-    checkbox(ui, p, &mut draft.copy_on_select, "Copier la sélection dès qu'elle est faite");
-    checkbox(ui, p, &mut draft.right_click_paste, "Le clic droit copie ou colle (Maj+clic droit ouvre le menu)");
-    checkbox(ui, p, &mut draft.confirm_paste, "Demander avant de coller plusieurs lignes");
+    section(ui, p, tr!("Souris et presse-papiers"));
+    checkbox(ui, p, &mut draft.copy_on_select, tr!("Copier la sélection dès qu'elle est faite"));
+    let text = tr!("Le clic droit copie ou colle (Maj+clic droit ouvre le menu)");
+    checkbox(ui, p, &mut draft.right_click_paste, text);
+    checkbox(ui, p, &mut draft.confirm_paste, tr!("Demander avant de coller plusieurs lignes"));
 
-    section(ui, p, "Journaux de session");
-    checkbox(ui, p, &mut draft.log_raw, "Garder les séquences d'échappement (journal brut, à relire avec cat)");
+    section(ui, p, tr!("Journaux de session"));
+    let text = tr!("Garder les séquences d'échappement (journal brut, à relire avec cat)");
+    checkbox(ui, p, &mut draft.log_raw, text);
     ui.add_space(4.0);
-    row(ui, p, "Dossier", |ui| {
+    row(ui, p, tr!("Dossier"), |ui| {
         let browse = 104.0;
         ui.add(
             TextEdit::singleline(&mut draft.log_folder)
@@ -288,8 +303,8 @@ fn behaviour_page(ui: &mut Ui, p: &Palette, draft: &mut TerminalPrefs) {
                 .desired_width(WIDTH - LABEL_WIDTH - browse - 2.0 * ui.spacing().item_spacing.x)
                 .margin(egui::Margin::symmetric(10, 7)),
         );
-        if ui.add_sized([browse, 30.0], Button::new("Parcourir…")).clicked() && !dev::active() {
-            let mut dialog = rfd::FileDialog::new().set_title("Dossier des journaux de session");
+        if ui.add_sized([browse, 30.0], Button::new(tr!("Parcourir…"))).clicked() && !dev::active() {
+            let mut dialog = rfd::FileDialog::new().set_title(tr!("Dossier des journaux de session"));
             if !draft.log_folder.trim().is_empty() {
                 dialog = dialog.set_directory(draft.log_folder.trim());
             }
@@ -300,21 +315,27 @@ fn behaviour_page(ui: &mut Ui, p: &Palette, draft: &mut TerminalPrefs) {
     });
     ui.label(small(
         p,
-        "Les connexions SSH peuvent enregistrer chaque session dans ce dossier (case dans leur formulaire).",
+        tr!("Les connexions SSH peuvent enregistrer chaque session dans ce dossier (case dans leur formulaire)."),
     ));
 }
 
-/// "5 000 lignes", with the French separator of thousands.
+/// "5 000 lignes", with the separator of thousands of the language.
 fn lines(count: usize) -> String {
+    use crate::i18n::Lang;
+    let separator = match crate::i18n::current() {
+        Lang::Fr => '\u{202f}',
+        Lang::En => ',',
+        Lang::De | Lang::Es => '.',
+    };
     let digits = count.to_string();
     let mut grouped = String::new();
     for (index, digit) in digits.chars().enumerate() {
         if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            grouped.push('\u{202f}');
+            grouped.push(separator);
         }
         grouped.push(digit);
     }
-    format!("{grouped} lignes")
+    trn!(count, "{count} lignes", "{count} lignes", count = grouped)
 }
 
 /// The sample, drawn exactly as a terminal would draw it with the draft.
@@ -400,7 +421,7 @@ fn swatch(ui: &mut Ui, p: &Palette, rect: Rect, id: &str, name: &str, selected: 
         .interact(rect, ui.id().with(("scheme", id)), Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand);
     if id == look::AUTO_SCHEME {
-        response.clone().on_hover_text("Suit le thème clair ou sombre de l'application");
+        response.clone().on_hover_text(tr!("Suit le thème clair ou sombre de l'application"));
     }
     let painter = ui.painter();
     let top = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + 34.0));
@@ -466,11 +487,14 @@ fn swatch(ui: &mut Ui, p: &Palette, rect: Rect, id: &str, name: &str, selected: 
 fn paste_form(ui: &mut Ui, p: &Palette, form: &mut PasteForm, outcome: &mut Outcome) {
     ui.set_width(460.0);
     let count = form.text.trim_end_matches(['\r', '\n']).lines().count();
-    title(ui, p, &format!("Coller {count} lignes ?"));
+    title(ui, p, &tr!("Coller {count} lignes ?", count));
     ui.add(
         Label::new(muted(
             p,
-            "Dans un terminal, chaque ligne collée peut lancer une commande. Vérifiez le texte avant de le coller.",
+            tr!(
+                "Dans un terminal, chaque ligne collée peut lancer une commande. \
+                 Vérifiez le texte avant de le coller."
+            ),
         ))
         .wrap(),
     );
@@ -486,16 +510,16 @@ fn paste_form(ui: &mut Ui, p: &Palette, form: &mut PasteForm, outcome: &mut Outc
             });
         });
     ui.add_space(10.0);
-    checkbox(ui, p, &mut form.dont_ask, "Ne plus demander");
+    checkbox(ui, p, &mut form.dont_ask, tr!("Ne plus demander"));
     ui.add_space(12.0);
     if ui.input(|input| input.key_pressed(Key::Enter)) {
         *outcome = Outcome::Confirmed;
     }
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, &format!("{}  Coller", icon::CLIPBOARD_TEXT), true).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::CLIPBOARD_TEXT, tr!("Coller")), true).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

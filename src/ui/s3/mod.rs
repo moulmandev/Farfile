@@ -244,18 +244,18 @@ pub fn file_menu(ui: &mut Ui, session: &Session, entry: &Entry, actions: &mut Ve
     if entry.is_dir() {
         return;
     }
-    if session.storage.can_share() && ui.button(format!("{}  Partager…", icon::SHARE_NETWORK)).clicked() {
+    if session.storage.can_share() && ui.button(format!("{}  {}", icon::SHARE_NETWORK, tr!("Partager…"))).clicked() {
         actions.push(Action::ShareLink(entry.name.clone()));
         ui.close();
     }
     if session.storage.s3().is_none() {
         return;
     }
-    if ui.button(format!("{}  Versions…", icon::CLOCK_COUNTER_CLOCKWISE)).clicked() {
+    if ui.button(format!("{}  {}", icon::CLOCK_COUNTER_CLOCKWISE, tr!("Versions…"))).clicked() {
         actions.push(Action::S3(S3Action::Versions(entry.name.clone())));
         ui.close();
     }
-    if ui.button(format!("{}  Métadonnées…", icon::TAG)).clicked() {
+    if ui.button(format!("{}  {}", icon::TAG, tr!("Métadonnées…"))).clicked() {
         actions.push(Action::S3(S3Action::Metadata(entry.name.clone())));
         ui.close();
     }
@@ -266,12 +266,12 @@ pub fn bucket_menu(ui: &mut Ui, p: &Palette, session: &Session, entry: &Entry, a
     if session.storage.s3().is_none() || entry.kind != crate::storage::EntryKind::Bucket {
         return;
     }
-    if ui.button(format!("{}  Réglages du bucket…", icon::GEAR_SIX)).clicked() {
+    if ui.button(format!("{}  {}", icon::GEAR_SIX, tr!("Réglages du bucket…"))).clicked() {
         actions.push(Action::S3(S3Action::BucketSettings(entry.name.clone())));
         ui.close();
     }
     ui.separator();
-    let delete = RichText::new(format!("{}  Supprimer le bucket…", icon::TRASH)).color(p.danger);
+    let delete = RichText::new(format!("{}  {}", icon::TRASH, tr!("Supprimer le bucket…"))).color(p.danger);
     if ui.button(delete).clicked() {
         actions.push(Action::S3(S3Action::DeleteBucket(entry.name.clone())));
         ui.close();
@@ -289,8 +289,8 @@ pub fn action_bar(ui: &mut Ui, p: &Palette, session: &Session, compact: bool, ac
     };
     let Some(bucket) = session.path.segments().first() else {
         if ui
-            .button(caption(icon::PLUS_CIRCLE, "Nouveau bucket"))
-            .on_hover_text("Créer un bucket")
+            .button(caption(icon::PLUS_CIRCLE, tr!("Nouveau bucket")))
+            .on_hover_text(tr!("Créer un bucket"))
             .clicked()
         {
             actions.push(Action::S3(S3Action::NewBucket));
@@ -298,19 +298,19 @@ pub fn action_bar(ui: &mut Ui, p: &Palette, session: &Session, compact: bool, ac
         return;
     };
     let shown = session.s3.show_deleted;
-    let mut text = RichText::new(caption(icon::GEAR_SIX, "Bucket"));
+    let mut text = RichText::new(caption(icon::GEAR_SIX, tr!("Bucket")));
     if shown {
         text = text.color(p.accent);
     }
-    let button = ui.button(text).on_hover_text(format!("Réglages et fichiers supprimés de « {bucket} »"));
+    let button = ui.button(text).on_hover_text(tr!("Réglages et fichiers supprimés de « {bucket} »", bucket));
     egui::Popup::menu(&button).show(|ui| {
         let mut ticked = shown;
-        if super::widgets::checkbox(ui, p, &mut ticked, "Afficher les fichiers supprimés").clicked() {
+        if super::widgets::checkbox(ui, p, &mut ticked, tr!("Afficher les fichiers supprimés")).clicked() {
             actions.push(Action::S3(S3Action::ToggleDeleted));
             ui.close();
         }
         ui.separator();
-        if ui.button(format!("{}  Réglages du bucket…", icon::GEAR_SIX)).clicked() {
+        if ui.button(format!("{}  {}", icon::GEAR_SIX, tr!("Réglages du bucket…"))).clicked() {
             actions.push(Action::S3(S3Action::BucketSettings(bucket.clone())));
             ui.close();
         }
@@ -417,9 +417,9 @@ fn buttons<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 /// A message for an answer that failed, unsupported servers explained.
 fn failure(error: &crate::s3::S3Error) -> String {
     if error.unsupported() {
-        format!("Ce serveur ne prend pas en charge cette fonction ({}).", code_of(error))
+        tr!("Ce serveur ne prend pas en charge cette fonction ({code}).", code = code_of(error))
     } else if error.access_denied() {
-        format!("Accès refusé : la clé de cette connexion n'en a pas le droit ({}).", code_of(error))
+        tr!("Accès refusé : la clé de cette connexion n'en a pas le droit ({code}).", code = code_of(error))
     } else {
         format!("{error}")
     }
@@ -443,9 +443,9 @@ fn copy_field(ui: &mut Ui, p: &Palette, text: &str, width: f32, copied: bool) ->
                 .margin(Margin::symmetric(10, 7)),
         );
         let label = if copied {
-            RichText::new(format!("{}  Copié", icon::CHECK)).color(p.success)
+            RichText::new(format!("{}  {}", icon::CHECK, tr!("Copié"))).color(p.success)
         } else {
-            RichText::new(format!("{}  Copier", icon::COPY_SIMPLE))
+            RichText::new(format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier")))
         };
         pressed = ui.add_sized([button_width, 30.0], Button::new(label)).clicked();
     });
@@ -456,16 +456,16 @@ fn copy_field(ui: &mut Ui, p: &Palette, text: &str, width: f32, copied: bool) ->
 /// before it ended.
 pub fn op_label(op: Op) -> &'static str {
     match op {
-        Op::RestoreVersion => "Restauration de la version",
-        Op::DeleteVersion => "Suppression de la version",
-        Op::CreateBucket => "Création du bucket",
-        Op::DeleteBucket => "Suppression du bucket",
-        Op::SaveVersioning => "Gestion des versions",
-        Op::SaveLifecycle => "Cycle de vie",
-        Op::SaveCors => "Règles CORS",
-        Op::SavePolicy => "Politique du bucket",
-        Op::SavePublicAccess => "Blocage de l'accès public",
-        Op::SetPublic => "Accès public",
-        Op::SaveMeta => "Métadonnées",
+        Op::RestoreVersion => tr!("Restauration de la version"),
+        Op::DeleteVersion => tr!("Suppression de la version"),
+        Op::CreateBucket => tr!("Création du bucket"),
+        Op::DeleteBucket => tr!("Suppression du bucket"),
+        Op::SaveVersioning => tr!("Gestion des versions"),
+        Op::SaveLifecycle => tr!("Cycle de vie"),
+        Op::SaveCors => tr!("Règles CORS"),
+        Op::SavePolicy => tr!("Politique du bucket"),
+        Op::SavePublicAccess => tr!("Blocage de l'accès public"),
+        Op::SetPublic => tr!("Accès public"),
+        Op::SaveMeta => tr!("Métadonnées"),
     }
 }

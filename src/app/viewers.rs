@@ -121,7 +121,7 @@ impl App {
         let start = self.last_download_dir.clone().or_else(|| {
             directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(PathBuf::from))
         });
-        let mut dialog = rfd::FileDialog::new().set_title("Télécharger dans…");
+        let mut dialog = rfd::FileDialog::new().set_title(tr!("Télécharger dans…"));
         if let Some(start) = start {
             dialog = dialog.set_directory(start);
         }
@@ -236,7 +236,7 @@ impl App {
     ) {
         // "Modifier dans …" names the editor files open in.
         let editor = if self.settings.text_editor.builtin {
-            "l'éditeur intégré".to_owned()
+            tr!("l'éditeur intégré").to_owned()
         } else {
             launch::editor_label(&self.settings.editor)
         };

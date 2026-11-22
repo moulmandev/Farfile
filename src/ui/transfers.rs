@@ -118,35 +118,35 @@ pub fn show(ui: &mut Ui, p: &Palette, panel: &Panel<'_>, actions: &mut Vec<Actio
         .count();
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Transferts").font(semibold(14.0)).color(p.text));
+        ui.label(RichText::new(tr!("Transferts")).font(semibold(14.0)).color(p.text));
         let mut parts = Vec::new();
         if active > paused {
-            parts.push(format!("{} en cours", active - paused));
+            parts.push(trn!(active - paused, "{n} en cours", "{n} en cours"));
         }
         if paused > 0 {
-            parts.push(format::count(paused, "en pause", "en pause"));
+            parts.push(trn!(paused, "{n} en pause", "{n} en pause"));
         }
         if failed > 0 {
-            parts.push(format::count(failed, "échec", "échecs"));
+            parts.push(trn!(failed, "{n} échec", "{n} échecs"));
         }
         let finished = transfers.len() - active - failed;
         if finished > 0 {
-            parts.push(format::count(finished, "terminé", "terminés"));
+            parts.push(trn!(finished, "{n} terminé", "{n} terminés"));
         }
         ui.label(small(p, parts.join(" · ")));
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if icon_button(ui, p, icon::X, "Masquer", true).clicked() {
+            if icon_button(ui, p, icon::X, tr!("Masquer"), true).clicked() {
                 actions.push(Action::ToggleTransfers);
             }
-            if transfers.len() > active && ui.button("Effacer les terminés").clicked() {
+            if transfers.len() > active && ui.button(tr!("Effacer les terminés")).clicked() {
                 actions.push(Action::ClearFinishedTransfers);
             }
-            if paused > 0 && ui.button(format!("{}  Tout reprendre", icon::PLAY)).clicked() {
+            if paused > 0 && ui.button(format!("{}  {}", icon::PLAY, tr!("Tout reprendre"))).clicked() {
                 actions.push(Action::Transfers(TransferAction::ResumeAll));
             } else if paused == 0
                 && pausable > 1
-                && ui.button(format!("{}  Tout suspendre", icon::PAUSE)).clicked()
+                && ui.button(format!("{}  {}", icon::PAUSE, tr!("Tout suspendre"))).clicked()
             {
                 actions.push(Action::Transfers(TransferAction::PauseAll));
             }
@@ -157,7 +157,7 @@ pub fn show(ui: &mut Ui, p: &Palette, panel: &Panel<'_>, actions: &mut Vec<Actio
 
     if order.is_empty() {
         ui.add_space(12.0);
-        ui.vertical_centered(|ui| ui.label(small(p, "Aucun transfert pour l'instant.")));
+        ui.vertical_centered(|ui| ui.label(small(p, tr!("Aucun transfert pour l'instant."))));
         return;
     }
 
@@ -181,13 +181,13 @@ pub fn show(ui: &mut Ui, p: &Palette, panel: &Panel<'_>, actions: &mut Vec<Actio
 
 /// `1er`, `2e`, `3e`…
 fn ordinal(n: usize) -> String {
-    if n == 1 { "1er".to_owned() } else { format!("{n}e") }
+    if n == 1 { tr!("1er").to_owned() } else { tr!("{n}e", n) }
 }
 
 /// A speed limit as the panel says it.
 pub fn limit_label(bytes_per_second: u64) -> String {
     if bytes_per_second == 0 {
-        "illimité".to_owned()
+        tr!("illimité").to_owned()
     } else {
         format::speed(bytes_per_second as f64)
     }
@@ -197,7 +197,7 @@ pub fn limit_label(bytes_per_second: u64) -> String {
 /// their settings.
 fn settings_button(ui: &mut Ui, p: &Palette, settings: &TransferSettings, actions: &mut Vec<Action>) {
     let limited = settings.download_limit > 0 || settings.upload_limit > 0;
-    let mut text = format!("{}  {} à la fois", icon::GAUGE, settings.parallel);
+    let mut text = format!("{}  {}", icon::GAUGE, tr!("{count} à la fois", count = settings.parallel));
     if limited {
         text.push_str(&format!(
             " · {} {} · {} {}",
@@ -210,7 +210,7 @@ fn settings_button(ui: &mut Ui, p: &Palette, settings: &TransferSettings, action
     let color = if limited { p.accent } else { p.muted };
     let button = ui
         .add(Button::new(RichText::new(text).size(12.5).color(color)).frame(false))
-        .on_hover_text("Vitesse, transferts simultanés, fichiers déjà présents");
+        .on_hover_text(tr!("Vitesse, transferts simultanés, fichiers déjà présents"));
     Popup::menu(&button)
         .id(settings_popup_id())
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -220,40 +220,41 @@ fn settings_button(ui: &mut Ui, p: &Palette, settings: &TransferSettings, action
 fn settings_form(ui: &mut Ui, p: &Palette, settings: &TransferSettings, actions: &mut Vec<Action>) {
     ui.set_width(300.0);
     ui.spacing_mut().item_spacing.y = 6.0;
-    ui.label(RichText::new("Vitesse maximale").font(semibold(13.0)).color(p.text));
-    let download = limit_row(ui, p, "down", icon::ARROW_DOWN, "Téléchargement", settings.download_limit);
+    ui.label(RichText::new(tr!("Vitesse maximale")).font(semibold(13.0)).color(p.text));
+    let download = limit_row(ui, p, "down", icon::ARROW_DOWN, tr!("Téléchargement"), settings.download_limit);
     if let Some(rate) = download {
         actions.push(Action::Transfers(TransferAction::SetDownloadLimit(rate)));
     }
-    if let Some(rate) = limit_row(ui, p, "up", icon::ARROW_UP, "Envoi", settings.upload_limit) {
+    if let Some(rate) = limit_row(ui, p, "up", icon::ARROW_UP, tr!("Envoi"), settings.upload_limit) {
         actions.push(Action::Transfers(TransferAction::SetUploadLimit(rate)));
     }
-    ui.label(small(p, "0 : sans limite. S'applique aussi aux transferts en cours."));
+    ui.label(small(p, tr!("0 : sans limite. S'applique aussi aux transferts en cours.")));
     ui.separator();
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Transferts simultanés").color(p.text));
+        ui.label(RichText::new(tr!("Transferts simultanés")).color(p.text));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let parallel = settings.parallel;
-            if icon_button(ui, p, icon::PLUS, "Un de plus", parallel < MAX_PARALLEL).clicked() {
+            if icon_button(ui, p, icon::PLUS, tr!("Un de plus"), parallel < MAX_PARALLEL).clicked() {
                 actions.push(Action::Transfers(TransferAction::SetParallel(parallel + 1)));
             }
             ui.label(RichText::new(parallel.to_string()).font(semibold(14.0)).color(p.text));
-            if icon_button(ui, p, icon::MINUS, "Un de moins", parallel > 1).clicked() {
+            if icon_button(ui, p, icon::MINUS, tr!("Un de moins"), parallel > 1).clicked() {
                 actions.push(Action::Transfers(TransferAction::SetParallel(parallel - 1)));
             }
         });
     });
-    let small_files = format!(
-        "Les autres attendent leur tour, dans l'ordre. Dans un dossier, les fichiers de moins de {} Mo \
-         passent en plus, jusqu'à {SMALL_PARALLEL} à la fois.",
-        SMALL_FILE / MIB
+    let small_files = tr!(
+        "Les autres attendent leur tour, dans l'ordre. Dans un dossier, les fichiers de moins de {size} Mo \
+         passent en plus, jusqu'à {count} à la fois.",
+        size = SMALL_FILE / MIB,
+        count = SMALL_PARALLEL
     );
     // Menus justify what wraps: not this sentence.
     ui.with_layout(Layout::top_down(Align::Min), |ui| ui.add(Label::new(small(p, small_files)).wrap()));
     ui.separator();
 
-    ui.label(RichText::new("Si le fichier existe déjà").color(p.text));
+    ui.label(RichText::new(tr!("Si le fichier existe déjà")).color(p.text));
     let mut policy = settings.on_conflict;
     egui::ComboBox::from_id_salt("conflict-policy")
         .width(ui.available_width())
@@ -281,7 +282,7 @@ fn limit_row(ui: &mut Ui, p: &Palette, key: &str, glyph: &str, label: &str, curr
         ui.label(RichText::new(label).color(p.text));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            for (size, name) in [(MIB, "Mo/s"), (KIB, "Ko/s")] {
+            for (size, name) in [(MIB, tr!("Mo/s")), (KIB, tr!("Ko/s"))] {
                 if ui.add(Button::selectable(unit == size, name)).clicked() && unit != size {
                     unit = size;
                     // The same figure in the new unit, as typed.
@@ -304,14 +305,15 @@ fn limit_row(ui: &mut Ui, p: &Palette, key: &str, glyph: &str, label: &str, curr
                             .range(0..=999_999)
                             .speed(if unit == MIB { 0.2 } else { 10.0 })
                             .custom_formatter(|value, _| {
-                                if value == 0.0 { "illimité".to_owned() } else { format!("{value}") }
+                                if value == 0.0 { tr!("illimité").to_owned() } else { format!("{value}") }
                             })
                             .custom_parser(|text| match text.trim() {
                                 "" | "illimité" => Some(0.0),
+                                text if text == tr!("illimité") => Some(0.0),
                                 text => text.replace(',', ".").parse().ok(),
                             }),
                     )
-                    .on_hover_text("Glisser ou cliquer pour saisir ; 0 pour aucune limite")
+                    .on_hover_text(tr!("Glisser ou cliquer pour saisir ; 0 pour aucune limite"))
                 })
                 .inner;
             if field.changed() {
@@ -381,31 +383,31 @@ fn row(
                 ui.add_space(6.0);
 
                 let figures = match (state, &folder) {
-                    _ if asking => RichText::new("Votre choix est attendu").color(p.accent),
+                    _ if asking => RichText::new(tr!("Votre choix est attendu")).color(p.accent),
                     (TransferState::Queued, _) => {
                         let text = match place {
-                            Some(place) => format!("En attente · {}", ordinal(place)),
-                            None => "En attente".to_owned(),
+                            Some(place) => tr!("En attente · {place}", place = ordinal(place)),
+                            None => tr!("En attente").to_owned(),
                         };
                         RichText::new(text).color(p.muted)
                     }
                     (TransferState::Paused, Some(folder)) => {
-                        RichText::new(format!("En pause · {} / {} fichiers", folder.finished, folder.files))
-                            .color(p.folder)
+                        let text = tr!("En pause · {done} / {total} fichiers", done = folder.finished, total = folder.files);
+                        RichText::new(text).color(p.folder)
                     }
-                    (TransferState::Paused, None) => RichText::new(format!(
-                        "En pause · {} / {}",
-                        format::size(done),
-                        format::size(total)
+                    (TransferState::Paused, None) => RichText::new(tr!(
+                        "En pause · {done} / {total}",
+                        done = format::size(done),
+                        total = format::size(total)
                     ))
                     .color(p.folder),
                     (TransferState::Running, Some(folder)) if folder.files == 0 => {
-                        RichText::new("Recherche des fichiers…").color(p.muted)
+                        RichText::new(tr!("Recherche des fichiers…")).color(p.muted)
                     }
                     (TransferState::Running, Some(folder)) => {
-                        let mut text = format!("{} / {} fichiers", folder.finished, folder.files);
+                        let mut text = tr!("{done} / {total} fichiers", done = folder.finished, total = folder.files);
                         if folder.exploring {
-                            text.push_str(" · recherche…");
+                            text.push_str(&format!(" · {}", tr!("recherche…")));
                         } else {
                             text.push_str(&format!(" · {} / {}", format::size(done), format::size(total)));
                         }
@@ -428,27 +430,27 @@ fn row(
                     }
                     // Everything was there already.
                     (TransferState::Done, Some(folder)) if folder.arrived == 0 && folder.skipped > 0 => {
-                        RichText::new(format::count(folder.skipped, "fichier ignoré", "fichiers ignorés")).color(p.muted)
+                        RichText::new(trn!(folder.skipped, "{n} fichier ignoré", "{n} fichiers ignorés")).color(p.muted)
                     }
                     (TransferState::Done, Some(folder)) => {
                         let mut text = format!(
                             "{} · {}",
-                            format::count(folder.arrived, "fichier", "fichiers"),
+                            trn!(folder.arrived, "{n} fichier", "{n} fichiers"),
                             format::size(total)
                         );
                         if folder.skipped > 0 {
-                            text.push_str(&format!(" · {}", format::count(folder.skipped, "ignoré", "ignorés")));
+                            text.push_str(&format!(" · {}", trn!(folder.skipped, "{n} ignoré", "{n} ignorés")));
                         }
                         RichText::new(text).color(p.muted)
                     }
                     (TransferState::Failed(_), Some(folder)) if folder.arrived > 0 => {
-                        RichText::new(format!("Incomplet · {} / {} fichiers", folder.arrived, folder.files))
-                            .color(p.muted)
+                        let text = tr!("Incomplet · {done} / {total} fichiers", done = folder.arrived, total = folder.files);
+                        RichText::new(text).color(p.muted)
                     }
                     (TransferState::Done, None) => RichText::new(format::size(total.max(done))).color(p.muted),
-                    (TransferState::Failed(_), _) => RichText::new("Échec").color(p.muted),
-                    (TransferState::Cancelled, _) => RichText::new("Annulé").color(p.muted),
-                    (TransferState::Skipped, _) => RichText::new("Ignoré").color(p.muted),
+                    (TransferState::Failed(_), _) => RichText::new(tr!("Échec")).color(p.muted),
+                    (TransferState::Cancelled, _) => RichText::new(tr!("Annulé")).color(p.muted),
+                    (TransferState::Skipped, _) => RichText::new(tr!("Ignoré")).color(p.muted),
                 };
                 ui.allocate_ui_with_layout(
                     vec2(250.0, 20.0),
@@ -490,14 +492,14 @@ fn buttons(ui: &mut Ui, p: &Palette, transfer: &Transfer, state: &TransferState)
     };
     match state {
         TransferState::Queued | TransferState::Running => {
-            if icon_button(ui, p, icon::X, "Annuler", true).clicked() {
+            if icon_button(ui, p, icon::X, tr!("Annuler"), true).clicked() {
                 transfer.cancel();
             }
             if transfer.can_pause_now() {
                 let hint = if transfer.resumable() {
-                    "Suspendre"
+                    tr!("Suspendre")
                 } else {
-                    "Suspendre (reprendra depuis le début : ce stockage ne sait pas continuer un envoi)"
+                    tr!("Suspendre (reprendra depuis le début : ce stockage ne sait pas continuer un envoi)")
                 };
                 if icon_button(ui, p, icon::PAUSE, hint, true).clicked() {
                     transfer.pause();
@@ -505,19 +507,19 @@ fn buttons(ui: &mut Ui, p: &Palette, transfer: &Transfer, state: &TransferState)
             }
         }
         TransferState::Paused => {
-            if icon_button(ui, p, icon::X, "Annuler", true).clicked() {
+            if icon_button(ui, p, icon::X, tr!("Annuler"), true).clicked() {
                 transfer.cancel();
             }
-            if icon_button(ui, p, icon::PLAY, "Reprendre", true).clicked() {
+            if icon_button(ui, p, icon::PLAY, tr!("Reprendre"), true).clicked() {
                 transfer.resume();
             }
         }
         TransferState::Failed(_) if transfer.can_pause() => {
             status(ui, icon::WARNING_CIRCLE, p.danger);
             let hint = if transfer.resumable() {
-                "Réessayer, à partir de ce qui est déjà passé"
+                tr!("Réessayer, à partir de ce qui est déjà passé")
             } else {
-                "Réessayer"
+                tr!("Réessayer")
             };
             if icon_button(ui, p, icon::ARROW_CLOCKWISE, hint, true).clicked() {
                 transfer.resume();
@@ -536,8 +538,8 @@ pub fn folder_menu(ui: &mut Ui, session: &Session, entry: &Entry, many: bool, ac
         return;
     }
     if ui
-        .button(format!("{}  Synchroniser…", icon::ARROWS_LEFT_RIGHT))
-        .on_hover_text("Comparer avec un dossier de cet ordinateur et copier ce qui diffère")
+        .button(format!("{}  {}", icon::ARROWS_LEFT_RIGHT, tr!("Synchroniser…")))
+        .on_hover_text(tr!("Comparer avec un dossier de cet ordinateur et copier ce qui diffère"))
         .clicked()
     {
         actions.push(Action::Transfers(TransferAction::AskSync(entry.name.clone())));
@@ -548,7 +550,7 @@ pub fn folder_menu(ui: &mut Ui, session: &Session, entry: &Entry, many: bool, ac
 /// The button of the action bar that synchronises the folder shown.
 pub fn sync_button(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec<Action>) {
     let can = session.writable() && !session.path.is_root();
-    if icon_button(ui, p, icon::ARROWS_LEFT_RIGHT, "Synchroniser ce dossier avec un dossier local…", can).clicked() {
+    if icon_button(ui, p, icon::ARROWS_LEFT_RIGHT, tr!("Synchroniser ce dossier avec un dossier local…"), can).clicked() {
         actions.push(Action::Transfers(TransferAction::AskSync(String::new())));
     }
 }

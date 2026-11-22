@@ -10,6 +10,7 @@ use egui::{Align, Button, Frame, Label, Layout, Popup, RichText, Ui, vec2};
 use super::Action;
 use super::dialogs::Outcome;
 use super::widgets::{checkbox, icon, icon_button, muted, primary_button};
+use crate::format;
 use crate::theme::{Palette, RADIUS, semibold};
 use crate::update::{self, Kind, Note, Release, Status, Updater, Version};
 
@@ -78,12 +79,12 @@ const WIDTH: f32 = 440.0;
 pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut UpdateDialog, outcome: &mut Outcome) {
     ui.set_width(WIDTH);
     ui.label(
-        RichText::new(format!("Farfile {} est disponible", dialog.release.version))
+        RichText::new(tr!("Farfile {version} est disponible", version = dialog.release.version))
             .font(semibold(17.0))
             .color(p.text),
     );
     ui.add_space(2.0);
-    ui.label(muted(p, format!("Vous avez la version {}.", Version::current())));
+    ui.label(muted(p, tr!("Vous avez la version {version}.", version = Version::current())));
     ui.add_space(10.0);
 
     let notes = update::plain_notes(&dialog.release.notes);
@@ -103,7 +104,7 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut UpdateDialog, outcome: &mut
         });
         ui.add_space(6.0);
     }
-    if ui.link(format!("{}  Nouveautés sur GitHub", icon::ARROW_SQUARE_OUT)).clicked() {
+    if ui.link(format!("{}  {}", icon::ARROW_SQUARE_OUT, tr!("Nouveautés sur GitHub"))).clicked() {
         dialog.choice = Some(Choice::ReadMore);
         *outcome = Outcome::Confirmed;
     }
@@ -111,10 +112,10 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut UpdateDialog, outcome: &mut
     // Progress, or why the last attempt failed.
     let downloading = dialog.downloading();
     if let Some((received, total)) = downloading {
-        let mb = |bytes: u64| bytes as f32 / (1024.0 * 1024.0);
+        let mb = |bytes: u64| format::decimal(bytes as f64 / (1024.0 * 1024.0), 1);
         let text = match total {
-            Some(total) => format!("Téléchargement… {:.1} sur {:.1} Mo", mb(received), mb(total)),
-            None => format!("Téléchargement… {:.1} Mo", mb(received)),
+            Some(total) => tr!("Téléchargement… {received} sur {total} Mo", received = mb(received), total = mb(total)),
+            None => tr!("Téléchargement… {received} Mo", received = mb(received)),
         };
         let fraction = total.map_or(0.0, |total| received as f32 / total.max(1) as f32);
         ui.add_space(8.0);
@@ -122,8 +123,11 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut UpdateDialog, outcome: &mut
     } else if let Status::Failed(message) = &dialog.status {
         ui.add_space(8.0);
         ui.add(
-            Label::new(RichText::new(format!("{}  Mise à jour impossible : {message}", icon::WARNING_CIRCLE)).color(p.danger))
-                .wrap(),
+            Label::new(
+                RichText::new(format!("{}  {}", icon::WARNING_CIRCLE, tr!("Mise à jour impossible : {message}", message)))
+                    .color(p.danger),
+            )
+            .wrap(),
         );
     }
     let busy = downloading.is_some();
@@ -131,24 +135,24 @@ pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut UpdateDialog, outcome: &mut
 
     ui.add_space(14.0);
     ui.horizontal(|ui| {
-        if dialog.kind != Kind::Installed && ui.add_enabled(!busy, Button::new("Ignorer cette version")).clicked() {
+        if dialog.kind != Kind::Installed && ui.add_enabled(!busy, Button::new(tr!("Ignorer cette version"))).clicked() {
             dialog.choice = Some(Choice::Skip);
             *outcome = Outcome::Confirmed;
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let (label, enabled) = match dialog.kind {
-                Kind::Portable if busy || ready => ("Mise à jour…", false),
-                Kind::Portable => ("Mettre à jour et redémarrer", true),
-                Kind::Installed if ready => ("Redémarrer pour mettre à jour", true),
-                Kind::Installed if busy => ("Téléchargement…", false),
-                Kind::Installed => ("Mettre à jour", true),
-                Kind::Browser | Kind::Off => ("Télécharger", true),
+                Kind::Portable if busy || ready => (tr!("Mise à jour…"), false),
+                Kind::Portable => (tr!("Mettre à jour et redémarrer"), true),
+                Kind::Installed if ready => (tr!("Redémarrer pour mettre à jour"), true),
+                Kind::Installed if busy => (tr!("Téléchargement…"), false),
+                Kind::Installed => (tr!("Mettre à jour"), true),
+                Kind::Browser | Kind::Off => (tr!("Télécharger"), true),
             };
             if primary_button(ui, p, label, enabled).clicked() {
                 dialog.choice = Some(Choice::Update);
                 *outcome = Outcome::Confirmed;
             }
-            if ui.button("Plus tard").clicked() {
+            if ui.button(tr!("Plus tard")).clicked() {
                 *outcome = Outcome::Cancelled;
             }
         });
@@ -170,20 +174,28 @@ pub fn status_item(ui: &mut Ui, p: &Palette, updater: &Updater, actions: &mut Ve
     };
     match updater.status() {
         Status::Ready { release, .. } if updater.kind == Kind::Installed => {
-            let response = pill(ui, icon::ARROW_CLOCKWISE, format!("Redémarrer pour passer à la {}", release.version));
-            if response.on_hover_text("Installe la mise à jour et rouvre Farfile").clicked() {
+            let text = tr!("Redémarrer pour passer à la {version}", version = release.version);
+            let response = pill(ui, icon::ARROW_CLOCKWISE, text);
+            if response.on_hover_text(tr!("Installe la mise à jour et rouvre Farfile")).clicked() {
                 actions.push(Action::Update(UpdateAction::RestartToUpdate));
             }
             ui.add_space(8.0);
         }
         Status::Ready { release, .. } if updater.kind == Kind::Portable => {
-            let text = format!("{}  Farfile {} au prochain lancement", icon::CHECK_CIRCLE, release.version);
+            let next = tr!("Farfile {version} au prochain lancement", version = release.version);
+            let text = format!("{}  {next}", icon::CHECK_CIRCLE);
             ui.label(RichText::new(text).size(12.0).color(p.success));
             ui.add_space(8.0);
         }
         Status::Downloading { release, received, total } => {
-            let percent = total.map(|total| format!(" · {} %", received * 100 / total.max(1))).unwrap_or_default();
-            let text = format!("Téléchargement de Farfile {}{percent}", release.version);
+            let version = &release.version;
+            let text = match total {
+                Some(total) => {
+                    let percent = received * 100 / total.max(1);
+                    tr!("Téléchargement de Farfile {version} · {percent} %", version, percent)
+                }
+                None => tr!("Téléchargement de Farfile {version}", version),
+            };
             let response = ui.add(
                 Button::new(RichText::new(text).size(12.0).color(p.muted)).frame(false),
             );
@@ -194,7 +206,7 @@ pub fn status_item(ui: &mut Ui, p: &Palette, updater: &Updater, actions: &mut Ve
             ui.add_space(8.0);
         }
         Status::Available(release) if updater.kind != Kind::Installed => {
-            let response = pill(ui, icon::ARROW_CIRCLE_UP, format!("Farfile {} disponible", release.version));
+            let response = pill(ui, icon::ARROW_CIRCLE_UP, tr!("Farfile {version} disponible", version = release.version));
             if response.clicked() {
                 actions.push(Action::Update(UpdateAction::Show(release)));
             }
@@ -209,7 +221,7 @@ pub fn status_item(ui: &mut Ui, p: &Palette, updater: &Updater, actions: &mut Ve
 pub fn version_button(ui: &mut Ui, p: &Palette, updater: &Updater, automatic: bool, actions: &mut Vec<Action>) {
     let status = updater.status();
     let news = matches!(status, Status::Available(_) | Status::Ready { .. });
-    let tooltip = format!("Farfile {} · mises à jour", Version::current());
+    let tooltip = tr!("Farfile {version} · mises à jour", version = Version::current());
     let response = icon_button(ui, p, icon::INFO, &tooltip, true);
     if news {
         let dot = response.rect.right_top() + vec2(-8.0, 8.0);
@@ -219,27 +231,33 @@ pub fn version_button(ui: &mut Ui, p: &Palette, updater: &Updater, automatic: bo
         ui.set_min_width(250.0);
         ui.label(RichText::new(format!("Farfile {}", Version::current())).font(semibold(14.0)).color(p.text));
         let how = match updater.kind {
-            Kind::Installed => "Installé : se met à jour à la fermeture",
-            Kind::Portable => "Version portable : demande avant de se mettre à jour",
-            Kind::Browser => "Les nouvelles versions s'ouvrent sur GitHub",
-            Kind::Off => "Compilé depuis les sources : pas de mises à jour",
+            Kind::Installed => tr!("Installé : se met à jour à la fermeture"),
+            Kind::Portable => tr!("Version portable : demande avant de se mettre à jour"),
+            Kind::Browser => tr!("Les nouvelles versions s'ouvrent sur GitHub"),
+            Kind::Off => tr!("Compilé depuis les sources : pas de mises à jour"),
         };
         ui.label(RichText::new(how).size(12.0).color(p.muted));
         ui.separator();
 
         if let Status::Available(release) | Status::Ready { release, .. } | Status::Downloading { release, .. } = &status
-            && ui.button(format!("{}  Farfile {} disponible…", icon::ARROW_CIRCLE_UP, release.version)).clicked()
+            && ui
+                .button(format!(
+                    "{}  {}",
+                    icon::ARROW_CIRCLE_UP,
+                    tr!("Farfile {version} disponible…", version = release.version)
+                ))
+                .clicked()
         {
             ui.close();
             actions.push(Action::Update(UpdateAction::Show(release.clone())));
         }
         let checking = matches!(status, Status::Checking);
-        let label = if checking { "Recherche en cours…" } else { "Rechercher des mises à jour…" };
+        let label = if checking { tr!("Recherche en cours…") } else { tr!("Rechercher des mises à jour…") };
         let check = ui
             .add_enabled(updater.kind != Kind::Off && !checking, Button::new(format!("{}  {label}", icon::ARROWS_CLOCKWISE)))
             .on_disabled_hover_text(match updater.kind {
-                Kind::Off => "Les versions compilées depuis les sources ne se mettent pas à jour",
-                _ => "Recherche en cours…",
+                Kind::Off => tr!("Les versions compilées depuis les sources ne se mettent pas à jour"),
+                _ => tr!("Recherche en cours…"),
             });
         if check.clicked() {
             ui.close();
@@ -248,13 +266,14 @@ pub fn version_button(ui: &mut Ui, p: &Palette, updater: &Updater, automatic: bo
         if updater.kind != Kind::Off {
             ui.add_space(2.0);
             let mut on = automatic;
-            if checkbox(ui, p, &mut on, "Rechercher automatiquement").changed() {
+            if checkbox(ui, p, &mut on, tr!("Rechercher automatiquement")).changed() {
                 actions.push(Action::Update(UpdateAction::SetAutomatic(on)));
             }
         }
         if let Status::Failed(message) = &status {
             ui.add_space(4.0);
-            ui.add(Label::new(RichText::new(format!("Dernière recherche : {message}")).size(12.0).color(p.muted)).wrap());
+            let last = RichText::new(tr!("Dernière recherche : {message}", message)).size(12.0).color(p.muted);
+            ui.add(Label::new(last).wrap());
         }
     });
 }

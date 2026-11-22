@@ -249,9 +249,10 @@ struct RawAsset {
 
 /// The `releases/latest` answer.
 pub fn parse_release(json: &str) -> Result<Release, String> {
-    let raw: Raw = serde_json::from_str(json).map_err(|_| "les informations de la version sont illisibles".to_owned())?;
+    let raw: Raw = serde_json::from_str(json)
+        .map_err(|_| tr!("les informations de la version sont illisibles").to_owned())?;
     let version = Version::parse(&raw.tag_name).filter(|_| !raw.draft && !raw.prerelease);
-    let Some(version) = version else { return Err("aucune version vers laquelle se mettre à jour".to_owned()) };
+    let Some(version) = version else { return Err(tr!("aucune version vers laquelle se mettre à jour").to_owned()) };
     let assets = raw
         .assets
         .into_iter()
@@ -372,7 +373,7 @@ impl Net for Wire {
         let mut url = url.to_owned();
         for _ in 0..6 {
             if !source.allows(&url) {
-                return Err("le téléchargement a été envoyé vers une adresse inattendue".to_owned());
+                return Err(tr!("le téléchargement a été envoyé vers une adresse inattendue").to_owned());
             }
             let mut response = self
                 .agent
@@ -380,9 +381,9 @@ impl Net for Wire {
                 .header("Accept", "application/vnd.github+json, application/octet-stream")
                 .call()
                 .map_err(|error| match error {
-                    ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => "pas de connexion".to_owned(),
-                    ureq::Error::Timeout(_) => "la connexion a expiré".to_owned(),
-                    _ => "la connexion a échoué".to_owned(),
+                    ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => tr!("pas de connexion").to_owned(),
+                    ureq::Error::Timeout(_) => tr!("la connexion a expiré").to_owned(),
+                    _ => tr!("la connexion a échoué").to_owned(),
                 })?;
             let status = response.status().as_u16();
             let header = |name: &str| response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
@@ -390,14 +391,14 @@ impl Net for Wire {
                 200 => {
                     let total = header("content-length").and_then(|v| v.parse().ok());
                     if total.is_some_and(|total| total > limit) {
-                        return Err("le téléchargement est plus gros que prévu".to_owned());
+                        return Err(tr!("le téléchargement est plus gros que prévu").to_owned());
                     }
                     let mut reader = response.body_mut().with_config().limit(limit).reader();
                     let mut body = Vec::with_capacity(total.unwrap_or(0).min(limit) as usize);
                     let mut chunk = vec![0u8; 64 * 1024];
                     loop {
                         let read = std::io::Read::read(&mut reader, &mut chunk)
-                            .map_err(|_| "le téléchargement a été interrompu".to_owned())?;
+                            .map_err(|_| tr!("le téléchargement a été interrompu").to_owned())?;
                         if read == 0 {
                             break;
                         }
@@ -407,15 +408,17 @@ impl Net for Wire {
                     return Ok(body);
                 }
                 301 | 302 | 303 | 307 | 308 => {
-                    let Some(location) = header("location") else { return Err("GitHub a renvoyé une redirection invalide".to_owned()) };
+                    let Some(location) = header("location") else {
+                        return Err(tr!("GitHub a renvoyé une redirection invalide").to_owned());
+                    };
                     url = location;
                 }
-                403 | 429 => return Err("GitHub demande de patienter (trop de requêtes)".to_owned()),
-                404 => return Err("introuvable sur GitHub".to_owned()),
-                status => return Err(format!("GitHub a répondu {status}")),
+                403 | 429 => return Err(tr!("GitHub demande de patienter (trop de requêtes)").to_owned()),
+                404 => return Err(tr!("introuvable sur GitHub").to_owned()),
+                status => return Err(tr!("GitHub a répondu {status}", status)),
             }
         }
-        Err("trop de redirections".to_owned())
+        Err(tr!("trop de redirections").to_owned())
     }
 }
 
@@ -439,7 +442,7 @@ pub fn download(
         .assets
         .iter()
         .find(|asset| asset.name == name)
-        .ok_or_else(|| format!("la version {} n'a pas de téléchargement pour ce système", release.tag))?;
+        .ok_or_else(|| tr!("la version {version} n'a pas de téléchargement pour ce système", version = release.tag))?;
 
     // What the file must hash to: GitHub's own record and the release's
     // checksum list. At least one is needed, and they must agree.
@@ -448,22 +451,24 @@ pub fn download(
         let sums = net.get(source, &source.download_url(release, SUMS), 1024 * 1024, &mut |_, _| {})?;
         if let Some(listed) = sum_for(&String::from_utf8_lossy(&sums), name) {
             if expected.as_ref().is_some_and(|known| *known != listed) {
-                return Err("les sommes de contrôle de la version ne concordent pas".to_owned());
+                return Err(tr!("les sommes de contrôle de la version ne concordent pas").to_owned());
             }
             expected = Some(listed);
         }
     }
-    let Some(expected) = expected else { return Err("la version n'a pas de somme de contrôle pour ce fichier".to_owned()) };
+    let Some(expected) = expected else {
+        return Err(tr!("la version n'a pas de somme de contrôle pour ce fichier").to_owned());
+    };
 
     let bytes = net.get(source, &source.download_url(release, name), MAX_DOWNLOAD, progress)?;
     let actual: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
     if actual != expected {
-        return Err("le fichier téléchargé est abîmé (sa somme de contrôle ne correspond pas)".to_owned());
+        return Err(tr!("le fichier téléchargé est abîmé (sa somme de contrôle ne correspond pas)").to_owned());
     }
 
-    std::fs::create_dir_all(dir).map_err(|e| format!("enregistrement du téléchargement impossible ({e})"))?;
+    std::fs::create_dir_all(dir).map_err(|e| tr!("enregistrement du téléchargement impossible ({error})", error = e))?;
     let path = dir.join(format!("{}-{name}", release.tag));
-    std::fs::write(&path, &bytes).map_err(|e| format!("enregistrement du téléchargement impossible ({e})"))?;
+    std::fs::write(&path, &bytes).map_err(|e| tr!("enregistrement du téléchargement impossible ({error})", error = e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -487,16 +492,16 @@ pub fn run_installer(file: &Path, relaunch: bool) -> Result<(), String> {
     if relaunch {
         cmd.arg("/RELAUNCH=1");
     }
-    cmd.spawn().map(drop).map_err(|e| format!("lancement de l'installateur impossible ({e})"))
+    cmd.spawn().map(drop).map_err(|e| tr!("lancement de l'installateur impossible ({error})", error = e))
 }
 
 /// Puts `file` in place of the running executable.
 pub fn replace_self(file: &Path) -> Result<(), String> {
     self_replace::self_replace(file).map_err(|e| match e.kind() {
         std::io::ErrorKind::PermissionDenied => {
-            "le dossier de Farfile est en lecture seule ; téléchargez la nouvelle version à la main".to_owned()
+            tr!("le dossier de Farfile est en lecture seule ; téléchargez la nouvelle version à la main").to_owned()
         }
-        _ => format!("remplacement de Farfile impossible ({e})"),
+        _ => tr!("remplacement de Farfile impossible ({error})", error = e),
     })?;
     let _ = std::fs::remove_file(file);
     Ok(())
@@ -509,12 +514,12 @@ pub fn restart() -> Result<(), String> {
         eprintln!("would restart Farfile");
         return Ok(());
     }
-    let exe = std::env::current_exe().map_err(|e| format!("redémarrage impossible ({e})"))?;
+    let exe = std::env::current_exe().map_err(|e| tr!("redémarrage impossible ({error})", error = e))?;
     Command::new(exe)
         .args(std::env::args_os().skip(1))
         .spawn()
         .map(drop)
-        .map_err(|e| format!("redémarrage impossible ({e})"))
+        .map_err(|e| tr!("redémarrage impossible ({error})", error = e))
 }
 
 // ---- the state the UI sees -----------------------------------------------------------

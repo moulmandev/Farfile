@@ -51,7 +51,7 @@ pub fn kind(name: &str) -> Kind {
 pub fn editor_label(editor: &str) -> String {
     let editor = editor.trim();
     if editor.is_empty() {
-        return if cfg!(windows) { "le Bloc-notes" } else { "l'éditeur de texte" }.to_owned();
+        return if cfg!(windows) { tr!("le Bloc-notes") } else { tr!("l'éditeur de texte") }.to_owned();
     }
     Path::new(editor)
         .file_stem()
@@ -71,7 +71,7 @@ pub fn start(path: &Path, how: Launch, editor: &str) -> Result<()> {
         Launch::Editor => run_editor(editor, path),
         Launch::Choose => choose(path),
         Launch::Default => match kind(&name) {
-            Kind::Program => bail!("ce type de fichier ne s'ouvre pas directement"),
+            Kind::Program => bail!(tr!("ce type de fichier ne s'ouvre pas directement")),
             Kind::Script => run_editor(editor, path),
             // No program knows this kind of file: ask which one to use.
             Kind::Document => open::that_detached(path).or_else(|_| choose(path)),
@@ -89,7 +89,7 @@ fn run_editor(editor: &str, path: &Path) -> Result<()> {
     hide_console(&mut command);
     command
         .spawn()
-        .with_context(|| format!("impossible de lancer {editor}"))?;
+        .with_context(|| tr!("impossible de lancer {editor}", editor))?;
     Ok(())
 }
 
@@ -98,13 +98,13 @@ fn plain_editor(path: &Path) -> Result<()> {
     Command::new("notepad.exe")
         .arg(path)
         .spawn()
-        .context("impossible de lancer le Bloc-notes")?;
+        .context(tr!("impossible de lancer le Bloc-notes"))?;
     Ok(())
 }
 
 #[cfg(not(windows))]
 fn plain_editor(path: &Path) -> Result<()> {
-    open::that_detached(path).context("aucun éditeur de texte trouvé")
+    open::that_detached(path).context(tr!("aucun éditeur de texte trouvé"))
 }
 
 /// An editor started through a `.cmd` wrapper (VS Code's `code`) would
@@ -129,13 +129,13 @@ fn choose(path: &Path) -> Result<()> {
         .raw_arg("shell32.dll,OpenAs_RunDLL")
         .raw_arg(path.as_os_str())
         .spawn()
-        .context("impossible d'afficher le choix du programme")?;
+        .context(tr!("impossible d'afficher le choix du programme"))?;
     Ok(())
 }
 
 #[cfg(not(windows))]
 fn choose(path: &Path) -> Result<()> {
-    open::that_detached(path).context("aucun programme trouvé pour ce fichier")
+    open::that_detached(path).context(tr!("aucun programme trouvé pour ce fichier"))
 }
 
 #[cfg(test)]

@@ -20,7 +20,6 @@ use tokio::sync::{Notify, oneshot};
 use super::{
     Direction, Event, Handle, Item, Transfer, TransferState, describe, safe_component, safe_components, tidy,
 };
-use crate::format;
 use crate::storage::{Entry, Found, Progress, RemotePath, Storage, TreeProgress, TreeReport, partial_path};
 use crate::transfers::conflict::{self, ConflictPolicy, Resolution, Version};
 use crate::transfers::control::{Control, Request};
@@ -419,7 +418,7 @@ pub(super) async fn download(handle: Handle, storage: Arc<dyn Storage>, items: V
     for (remote, local, mut source) in files {
         if local.is_dir() {
             handle.notice(
-                format!("« {} » n'est pas téléchargé : un dossier porte ce nom.", local.display()),
+                tr!("« {name} » n'est pas téléchargé : un dossier porte ce nom.", name = local.display()),
                 true,
             );
             continue;
@@ -469,7 +468,7 @@ pub(super) async fn upload(handle: Handle, storage: Arc<dyn Storage>, sources: V
     }
     if files.is_empty() {
         if folders == 0 {
-            handle.notice("Aucun fichier à importer", false);
+            handle.notice(tr!("Aucun fichier à importer"), false);
         }
         return;
     }
@@ -480,7 +479,7 @@ pub(super) async fn upload(handle: Handle, storage: Arc<dyn Storage>, sources: V
         let remote = dest.child(&name);
         let there = listings.at(&remote).await;
         if there.is_some_and(Entry::is_dir) {
-            handle.notice(format!("« {remote} » n'est pas envoyé : un dossier porte ce nom."), true);
+            handle.notice(tr!("« {remote} » n'est pas envoyé : un dossier porte ce nom.", remote), true);
             continue;
         }
         let existing = there.map(|entry| Version {
@@ -579,7 +578,7 @@ fn new_transfer(handle: &Handle, job: &Job) -> (Arc<Transfer>, Arc<Control>) {
     let control = Arc::new(Control::default());
     control.set_resumable(job.can_resume());
     if job.resume {
-        control.set_note("Reprise de la copie partielle");
+        control.set_note(tr!("Reprise de la copie partielle"));
     }
     let transfer = Arc::new(Transfer {
         id: handle.next_id.fetch_add(1, Ordering::Relaxed),
@@ -859,18 +858,26 @@ impl Folder {
         });
         if let Some((name, error)) = failed.next() {
             problems.push(match failed.count() {
-                0 => format!("{name} : {error}"),
-                more => format!(
-                    "{}, dont {name} : {error}",
-                    format::count(more + 1, "fichier en échec", "fichiers en échec")
+                0 => tr!("{name} : {error}", name, error),
+                more => trn!(
+                    more + 1,
+                    "{n} fichier en échec, dont {name} : {error}",
+                    "{n} fichiers en échec, dont {name} : {error}",
+                    name,
+                    error
                 ),
             });
         }
         drop(files);
         match lock(&self.unreadable).as_slice() {
             [] => {}
-            [only] => problems.push(format!("dossier illisible : {only}")),
-            [first, rest @ ..] => problems.push(format!("{} dossiers illisibles, dont {first}", rest.len() + 1)),
+            [only] => problems.push(tr!("dossier illisible : {only}", only)),
+            [first, rest @ ..] => problems.push(trn!(
+                rest.len() + 1,
+                "{n} dossier illisible, dont {first}",
+                "{n} dossiers illisibles, dont {first}",
+                first
+            )),
         }
         (!problems.is_empty()).then(|| problems.join(" · "))
     }
@@ -1080,17 +1087,23 @@ fn finish_tree(handle: &Handle, transfer: &Transfer, folder: &Folder, report: Tr
     lock(&folder.unreadable).extend(report.unreadable);
     if let Some(first) = report.unwritable.first() {
         let why = match report.unwritable.len() {
-            1 => format!("impossible d'écrire {first}"),
-            count => format!("{count} fichiers impossibles à écrire, dont {first}"),
+            1 => tr!("impossible d'écrire {path}", path = first),
+            count => trn!(
+                count,
+                "{n} fichier impossible à écrire, dont {first}",
+                "{n} fichiers impossibles à écrire, dont {first}",
+                first
+            ),
         };
         *lock(&folder.error) = Some(why);
     }
     if report.links > 0 {
         handle.notice(
-            format!(
-                "{} : {} non copiés",
-                transfer.name,
-                format::count(report.links, "lien symbolique", "liens symboliques")
+            trn!(
+                report.links,
+                "{name} : {n} lien symbolique non copiés",
+                "{name} : {n} liens symboliques non copiés",
+                name = transfer.name
             ),
             false,
         );
@@ -1144,7 +1157,7 @@ async fn walk_download(
                 }
                 Found::Folder { relative } => subfolders.push(relative),
                 Found::Unreadable { relative, error } => {
-                    lock(&folder.unreadable).push(format!("{relative} : {}", tidy(&error)));
+                    lock(&folder.unreadable).push(tr!("{name} : {error}", name = relative, error = tidy(&error)));
                     unreadable.insert(relative);
                 }
             }
@@ -1191,7 +1204,7 @@ async fn plan_download(
     dest.extend(safe_components(relative));
     if dest.is_dir() {
         handle.notice(
-            format!("« {} » n'est pas téléchargé : un dossier porte ce nom.", dest.display()),
+            tr!("« {name} » n'est pas téléchargé : un dossier porte ce nom.", name = dest.display()),
             true,
         );
         return;
@@ -1258,7 +1271,7 @@ async fn upload_folder(
         let path = remote.child(&relative);
         let there = listings.at(&path).await;
         if there.is_some_and(Entry::is_dir) {
-            handle.notice(format!("« {path} » n'est pas envoyé : un dossier porte ce nom."), true);
+            handle.notice(tr!("« {remote} » n'est pas envoyé : un dossier porte ce nom.", remote = path), true);
             continue;
         }
         let existing = there.map(|entry| Version {
@@ -1347,18 +1360,24 @@ async fn run(
         };
         match resolution {
             Resolution::Skip => {
-                control.set_note("Déjà présent : laissé tel quel");
+                control.set_note(tr!("Déjà présent : laissé tel quel"));
                 transfer.set_state(TransferState::Skipped);
                 return repaint();
             }
-            Resolution::Overwrite => control.set_note(format!("Remplace le fichier présent · {}", job.target())),
+            Resolution::Overwrite => {
+                control.set_note(tr!("Remplace le fichier présent · {target}", target = job.target()))
+            }
             Resolution::Resume => {
                 mode = Mode::ContinueInPlace;
-                control.set_note(format!("Complète le fichier présent · {}", job.target()));
+                control.set_note(tr!("Complète le fichier présent · {target}", target = job.target()));
             }
             Resolution::Rename => {
                 rename(&batch, &mut job).await;
-                control.set_note(format!("Renommé en « {} » · {}", job.name_at_destination(), job.target()));
+                control.set_note(tr!(
+                    "Renommé en « {name} » · {target}",
+                    name = job.name_at_destination(),
+                    target = job.target()
+                ));
             }
         }
     }
@@ -1387,7 +1406,7 @@ async fn run(
         repaint();
         // Paused or cancelled right as its turn came: no need to start.
         let result = if transfer.progress.is_cancelled() {
-            Err(anyhow::anyhow!("annulé"))
+            Err(anyhow::anyhow!(tr!("annulé")))
         } else {
             attempted = true;
             attempt(&job, mode, &transfer.progress).await
@@ -1625,7 +1644,7 @@ async fn attempt(job: &Job, mode: Mode, progress: &Progress) -> Result<()> {
             result?;
             tokio::fs::rename(&partial, &job.local)
                 .await
-                .map_err(|error| anyhow::anyhow!("impossible d'écrire {} : {error}", job.local.display()))
+                .map_err(|error| anyhow::anyhow!(tr!("impossible d'écrire {path} : {error}", path = job.local.display(), error)))
         }
         Direction::Upload => {
             if storage.can_resume_upload() {
@@ -1796,7 +1815,7 @@ pub(super) async fn sync_run(
     start(&handle, &batch, jobs);
     if deletions.is_empty() {
         if transfers == 0 {
-            handle.notice("Rien à synchroniser", false);
+            handle.notice(tr!("Rien à synchroniser"), false);
         }
         return;
     }
@@ -1828,17 +1847,20 @@ pub(super) async fn sync_run(
                 }
             }
             Ok(()) => {}
-            Err(error) => failures.push(format!("{relative} : {}", describe(error))),
+            Err(error) => failures.push(tr!("{name} : {error}", name = relative, error = describe(error))),
         }
     }
     for folder in touched {
         handle.changed(&storage, RemotePath::parse(&folder));
     }
     let removed = results.len() - failures.len();
-    let text = crate::format::count(removed, "fichier supprimé", "fichiers supprimés");
+    let text = trn!(removed, "{n} fichier supprimé", "{n} fichiers supprimés");
     match failures.first() {
-        None => handle.notice(format!("Synchronisation : {text}"), false),
-        Some(first) => handle.notice(format!("Synchronisation : {text}, {} échec(s) — {first}", failures.len()), true),
+        None => handle.notice(tr!("Synchronisation : {text}", text), false),
+        Some(first) => {
+            let count = failures.len();
+            handle.notice(tr!("Synchronisation : {text}, {count} échec(s) — {first}", text, count, first), true)
+        }
     }
 }
 

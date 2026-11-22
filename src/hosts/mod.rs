@@ -55,25 +55,32 @@ impl HostColor {
         }
     }
 
+    /// Its name in the language in use.
     pub fn label(self) -> &'static str {
+        crate::i18n::lookup(self.french())
+    }
+
+    /// Its French name, which scripts may type too.
+    fn french(self) -> &'static str {
         match self {
-            Self::Red => "Rouge",
-            Self::Orange => "Orange",
-            Self::Yellow => "Jaune",
-            Self::Green => "Vert",
-            Self::Teal => "Turquoise",
-            Self::Blue => "Bleu",
-            Self::Purple => "Violet",
-            Self::Pink => "Rose",
+            Self::Red => tr_key!("Rouge"),
+            Self::Orange => tr_key!("Orange"),
+            Self::Yellow => tr_key!("Jaune"),
+            Self::Green => tr_key!("Vert"),
+            Self::Teal => tr_key!("Turquoise"),
+            Self::Blue => tr_key!("Bleu"),
+            Self::Purple => tr_key!("Violet"),
+            Self::Pink => tr_key!("Rose"),
         }
     }
 
-    /// From its saved name or its French one, whatever the case.
+    /// From its saved name or its French one, whatever the case and the
+    /// language in use.
     pub fn parse(text: &str) -> Option<Self> {
         let text = fold(text.trim());
         Self::ALL
             .into_iter()
-            .find(|color| color.key() == text || fold(color.label()) == text)
+            .find(|color| color.key() == text || fold(color.french()) == text)
     }
 
     /// Tuned per theme: bright on the dark background, deep enough on the

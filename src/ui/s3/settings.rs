@@ -29,11 +29,11 @@ impl SettingsTab {
 
     fn label(self) -> &'static str {
         match self {
-            Self::General => "Général",
-            Self::Lifecycle => "Cycle de vie",
+            Self::General => tr!("Général"),
+            Self::Lifecycle => tr!("Cycle de vie"),
             Self::Cors => "CORS",
-            Self::Policy => "Politique",
-            Self::Public => "Accès public",
+            Self::Policy => tr!("Politique"),
+            Self::Public => tr!("Accès public"),
         }
     }
 
@@ -217,13 +217,13 @@ impl Settings {
     /// Returns true to close.
     pub fn show(&mut self, ui: &mut Ui, p: &Palette, requests: &mut Vec<Request>) -> bool {
         ui.set_width(WIDTH);
-        heading(ui, p, &format!("Réglages du bucket « {} »", self.bucket));
+        heading(ui, p, &tr!("Réglages du bucket « {bucket} »", bucket = self.bucket));
         let region = match &self.general {
             Loaded::Ready(General { region: Ok(region), .. }) => match region_label(region) {
                 Some(label) => format!("{region} · {label}"),
                 None => region.clone(),
             },
-            Loaded::Ready(_) | Loaded::Failed(_) => "Région inconnue".to_owned(),
+            Loaded::Ready(_) | Loaded::Failed(_) => tr!("Région inconnue").to_owned(),
             Loaded::Loading => "…".to_owned(),
         };
         subject(ui, p, icon::DATABASE, &region);
@@ -265,7 +265,7 @@ impl Settings {
             |ui| {
                 ui.set_min_size(egui::vec2(WIDTH, super::STATUS_HEIGHT));
                 if self.saving == Some(self.tab) {
-                    super::busy(ui, p, "Enregistrement…");
+                    super::busy(ui, p, tr!("Enregistrement…"));
                 } else if let Some((tab, text, error)) = &self.message
                     && *tab == self.tab
                 {
@@ -280,20 +280,20 @@ impl Settings {
             if savable {
                 let label = match (&self.policy, self.tab) {
                     (Loaded::Ready(policy), SettingsTab::Policy) if policy.text.trim().is_empty() && !policy.saved.is_empty() => {
-                        "Supprimer la politique"
+                        tr!("Supprimer la politique")
                     }
-                    _ => "Enregistrer",
+                    _ => tr!("Enregistrer"),
                 };
                 let enabled = self.saving.is_none() && self.dirty(self.tab);
                 if primary_button(ui, p, label, enabled).clicked() {
                     self.save(requests);
                 }
             }
-            close = ui.button("Fermer").clicked();
+            close = ui.button(tr!("Fermer")).clicked();
             if !savable && self.tab != SettingsTab::General {
                 return;
             }
-            if self.dirty(self.tab) && ui.button("Annuler les changements").clicked() {
+            if self.dirty(self.tab) && ui.button(tr!("Annuler les changements")).clicked() {
                 self.revert();
             }
         });
@@ -397,11 +397,14 @@ impl Settings {
     fn general_tab(&mut self, ui: &mut Ui, p: &Palette, requests: &mut Vec<Request>) {
         let general = match &self.general {
             Loaded::Loading => return loading(ui, p),
-            Loaded::Failed(error) => return unavailable(ui, p, "les réglages", error),
+            Loaded::Failed(error) => {
+                let titles = (tr!("Ce serveur ne gère pas les réglages"), tr!("Impossible de lire les réglages"));
+                return unavailable(ui, p, titles, error);
+            }
             Loaded::Ready(general) => general,
         };
         let mut switch = None;
-        setting_row(ui, p, "Région", |ui| match &general.region {
+        setting_row(ui, p, tr!("Région"), |ui| match &general.region {
             Ok(region) => {
                 let mut text = region.clone();
                 if let Some(label) = region_label(region) {
@@ -414,29 +417,35 @@ impl Settings {
             }
         });
 
-        setting_row(ui, p, "Gestion des versions", |ui| {
+        setting_row(ui, p, tr!("Gestion des versions"), |ui| {
             match &general.versioning {
                 Ok(versioning) => {
                     let (label, tint, text) = match versioning {
                         Versioning::Enabled => (
-                            "Activée",
+                            tr!("Activée"),
                             p.success,
-                            "Chaque modification ou suppression conserve l'état précédent du fichier : \
-                             « Versions… » sur un fichier, et les fichiers supprimés dans le menu Bucket. \
-                             Les anciennes versions sont stockées et facturées comme les autres objets : une \
-                             règle de cycle de vie peut les supprimer au bout de quelques jours.",
+                            tr!(
+                                "Chaque modification ou suppression conserve l'état précédent du fichier : \
+                                 « Versions… » sur un fichier, et les fichiers supprimés dans le menu Bucket. \
+                                 Les anciennes versions sont stockées et facturées comme les autres objets : une \
+                                 règle de cycle de vie peut les supprimer au bout de quelques jours."
+                            ),
                         ),
                         Versioning::Suspended => (
-                            "Suspendue",
+                            tr!("Suspendue"),
                             p.folder,
-                            "Les versions existantes restent, mais les prochaines modifications remplacent le \
-                             fichier sans garder l'état précédent.",
+                            tr!(
+                                "Les versions existantes restent, mais les prochaines modifications remplacent le \
+                                 fichier sans garder l'état précédent."
+                            ),
                         ),
                         Versioning::Never => (
-                            "Jamais activée",
+                            tr!("Jamais activée"),
                             p.muted,
-                            "Un fichier modifié ou supprimé ne peut pas être récupéré. Une fois activée, la \
-                             gestion des versions ne peut plus qu'être suspendue.",
+                            tr!(
+                                "Un fichier modifié ou supprimé ne peut pas être récupéré. Une fois activée, la \
+                                 gestion des versions ne peut plus qu'être suspendue."
+                            ),
                         ),
                     };
                     ui.horizontal(|ui| {
@@ -444,10 +453,10 @@ impl Settings {
                         ui.add_space(8.0);
                         let busy = self.saving.is_some();
                         if *versioning == Versioning::Enabled {
-                            if ui.add_enabled(!busy, egui::Button::new("Suspendre")).clicked() {
+                            if ui.add_enabled(!busy, egui::Button::new(trc!("versions", "Suspendre"))).clicked() {
                                 switch = Some(false);
                             }
-                        } else if primary_button(ui, p, "Activer", !busy).clicked() {
+                        } else if primary_button(ui, p, tr!("Activer"), !busy).clicked() {
                             switch = Some(true);
                         }
                     });
@@ -461,25 +470,29 @@ impl Settings {
 
         let text = match &general.ownership {
             Ok(Some(owner)) if owner == "BucketOwnerEnforced" => {
-                "Le propriétaire du bucket possède tous les objets ; les ACL sont désactivées \
-                 (BucketOwnerEnforced). Un fichier se rend public par la politique du bucket."
-                    .to_owned()
+                tr!(
+                    "Le propriétaire du bucket possède tous les objets ; les ACL sont désactivées \
+                     (BucketOwnerEnforced). Un fichier se rend public par la politique du bucket."
+                )
+                .to_owned()
             }
             Ok(Some(owner)) if owner == "BucketOwnerPreferred" => {
-                "Les ACL sont actives ; le bucket devient propriétaire des objets envoyés avec l'ACL \
-                 bucket-owner-full-control (BucketOwnerPreferred)."
-                    .to_owned()
+                tr!(
+                    "Les ACL sont actives ; le bucket devient propriétaire des objets envoyés avec l'ACL \
+                     bucket-owner-full-control (BucketOwnerPreferred)."
+                )
+                .to_owned()
             }
             Ok(Some(owner)) if owner == "ObjectWriter" => {
-                "Les ACL sont actives ; chaque objet appartient au compte qui l'a envoyé (ObjectWriter)."
+                tr!("Les ACL sont actives ; chaque objet appartient au compte qui l'a envoyé (ObjectWriter).")
                     .to_owned()
             }
             Ok(Some(owner)) => owner.clone(),
-            Ok(None) => "Non configurée : les ACL d'objet sont actives.".to_owned(),
-            Err(error) if error.unsupported() => "Non prise en charge par ce serveur.".to_owned(),
+            Ok(None) => tr!("Non configurée : les ACL d'objet sont actives.").to_owned(),
+            Err(error) if error.unsupported() => tr!("Non prise en charge par ce serveur.").to_owned(),
             Err(error) => failure(error),
         };
-        setting_row(ui, p, "Propriété des objets", |ui| {
+        setting_row(ui, p, tr!("Propriété des objets"), |ui| {
             ui.add(Label::new(RichText::new(text).color(p.text)).wrap());
         });
         if let Some(enabled) = switch {
@@ -610,14 +623,15 @@ fn loading(ui: &mut Ui, p: &Palette) {
     ui.vertical_centered(|ui| ui.add(egui::Spinner::new().size(24.0).color(p.accent)));
 }
 
-/// What a tab shows when the server refused to give its settings.
-fn unavailable(ui: &mut Ui, p: &Palette, what: &str, error: &S3Error) {
+/// What a tab shows when the server refused to give its settings: the
+/// title for a server without them, and the one for a failure.
+fn unavailable(ui: &mut Ui, p: &Palette, titles: (&str, &str), error: &S3Error) {
     let (glyph, tint, title) = if error.unsupported() {
-        (icon::PROHIBIT, p.faint, format!("Ce serveur ne gère pas {what}"))
+        (icon::PROHIBIT, p.faint, titles.0)
     } else {
-        (icon::WARNING_CIRCLE, p.danger, format!("Impossible de lire {what}"))
+        (icon::WARNING_CIRCLE, p.danger, titles.1)
     };
-    placeholder(ui, p, glyph, tint, &title, "");
+    placeholder(ui, p, glyph, tint, title, "");
     ui.vertical_centered(|ui| {
         ui.set_max_width(520.0);
         ui.add(Label::new(muted(p, failure(error))).wrap());
@@ -627,7 +641,10 @@ fn unavailable(ui: &mut Ui, p: &Palette, what: &str, error: &S3Error) {
 /// The form / JSON switch of a tab of rules.
 fn view_switch(ui: &mut Ui, p: &Palette, json: bool) -> Option<bool> {
     let mut wanted = json;
-    let options = [(false, format!("{}  Formulaire", icon::LIST_BULLETS)), (true, format!("{}  JSON", icon::BRACKETS_CURLY))];
+    let options = [
+        (false, format!("{}  {}", icon::LIST_BULLETS, tr!("Formulaire"))),
+        (true, format!("{}  JSON", icon::BRACKETS_CURLY)),
+    ];
     segmented(ui, p, &mut wanted, &options).then_some(wanted)
 }
 
@@ -706,7 +723,7 @@ fn json_editor(ui: &mut Ui, p: &Palette, text: &mut String, problem: Option<Stri
             ui.add(Label::new(RichText::new(problem).size(12.0).color(p.danger)).wrap());
         }
         None => {
-            ui.label(RichText::new(format!("{}  JSON valide", icon::CHECK)).size(12.0).color(p.success));
+            ui.label(RichText::new(format!("{}  {}", icon::CHECK, tr!("JSON valide"))).size(12.0).color(p.success));
         }
     }
 }
@@ -714,7 +731,13 @@ fn json_editor(ui: &mut Ui, p: &Palette, text: &mut String, problem: Option<Stri
 fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) {
     let rules = match state {
         Loaded::Loading => return loading(ui, p),
-        Loaded::Failed(error) => return unavailable(ui, p, "les règles de cycle de vie", error),
+        Loaded::Failed(error) => {
+            let titles = (
+                tr!("Ce serveur ne gère pas les règles de cycle de vie"),
+                tr!("Impossible de lire les règles de cycle de vie"),
+            );
+            return unavailable(ui, p, titles, error);
+        }
         Loaded::Ready(rules) => rules,
     };
     let mut switch_problem = None;
@@ -724,8 +747,10 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
             ui.add(
                 Label::new(small(
                     p,
-                    "Supprime automatiquement des objets, d'anciennes versions ou des envois inachevés. \
-                     Le serveur applique les règles environ une fois par jour.",
+                    tr!(
+                        "Supprime automatiquement des objets, d'anciennes versions ou des envois inachevés. \
+                         Le serveur applique les règles environ une fois par jour."
+                    ),
                 ))
                 .wrap(),
             );
@@ -737,7 +762,7 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
         });
     });
     if let Some(problem) = switch_problem {
-        note(ui, p, icon::WARNING_CIRCLE, p.danger, &format!("Passage impossible : {problem}"));
+        note(ui, p, icon::WARNING_CIRCLE, p.danger, &tr!("Passage impossible : {problem}", problem));
     }
     ui.add_space(8.0);
 
@@ -754,7 +779,7 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
         ui.add_space(30.0);
         ui.vertical_centered(|ui| {
             ui.label(RichText::new(icon::CALENDAR_X).size(34.0).color(p.faint));
-            ui.label(muted(p, "Aucune règle : les objets restent jusqu'à ce qu'on les supprime."));
+            ui.label(muted(p, tr!("Aucune règle : les objets restent jusqu'à ce qu'on les supprime.")));
         });
         ui.add_space(12.0);
     }
@@ -763,45 +788,52 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
         card(ui, p, |ui| {
             ui.horizontal(|ui| {
                 let editable = form.prefix_editable();
-                field(ui, p, "Nom", TextEdit::singleline(&mut form.id).hint_text("facultatif"), 190.0);
+                field(ui, p, tr!("Nom"), TextEdit::singleline(&mut form.id).hint_text(tr!("facultatif")), 190.0);
                 let prefix = TextEdit::singleline(&mut form.prefix)
-                    .hint_text(if editable { "Tout le bucket" } else { "Filtre avancé (voir JSON)" })
+                    .hint_text(if editable { tr!("Tout le bucket") } else { tr!("Filtre avancé (voir JSON)") })
                     .interactive(editable);
-                field(ui, p, "Préfixe des objets concernés", prefix, 250.0);
+                field(ui, p, tr!("Préfixe des objets concernés"), prefix, 250.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
-                    if icon_button(ui, p, icon::TRASH, "Retirer cette règle", true).clicked() {
+                    if icon_button(ui, p, icon::TRASH, tr!("Retirer cette règle"), true).clicked() {
                         remove = Some(index);
                     }
                     ui.add_space(4.0);
-                    checkbox(ui, p, &mut form.enabled, "Active");
+                    checkbox(ui, p, &mut form.enabled, tr!("Active"));
                 });
             });
             ui.add_space(6.0);
-            days_line(ui, p, &mut form.expire, &mut form.expire_days, "Supprimer les objets", "jours après leur création");
+            days_line(
+                ui,
+                p,
+                &mut form.expire,
+                &mut form.expire_days,
+                tr!("Supprimer les objets"),
+                tr!("jours après leur création"),
+            );
             days_line(
                 ui,
                 p,
                 &mut form.noncurrent,
                 &mut form.noncurrent_days,
-                "Supprimer les versions non actuelles",
-                "jours après avoir été remplacées",
+                tr!("Supprimer les versions non actuelles"),
+                tr!("jours après avoir été remplacées"),
             );
             days_line(
                 ui,
                 p,
                 &mut form.abort,
                 &mut form.abort_days,
-                "Interrompre les envois multipart inachevés",
-                "jours après leur début",
+                tr!("Interrompre les envois multipart inachevés"),
+                tr!("jours après leur début"),
             );
             let advanced = form.base.advanced();
             if !advanced.is_empty() {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new(format!(
-                        "{}  Conservé tel quel : {} — modifiable dans la vue JSON.",
+                        "{}  {}",
                         icon::INFO,
-                        advanced.join(", ")
+                        tr!("Conservé tel quel : {kept} — modifiable dans la vue JSON.", kept = advanced.join(", "))
                     ))
                     .size(12.0)
                     .color(p.muted),
@@ -810,10 +842,11 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
             ui.add_space(2.0);
             match form.to_doc() {
                 Ok(rule) if rule.status == lifecycle::Status::Enabled => {
-                    ui.label(small(p, format!("{}  En bref : {}.", icon::ARROW_BEND_DOWN_RIGHT, rule.summary())));
+                    let summary = tr!("En bref : {summary}.", summary = rule.summary());
+                    ui.label(small(p, format!("{}  {summary}", icon::ARROW_BEND_DOWN_RIGHT)));
                 }
                 Ok(_) => {
-                    ui.label(small(p, format!("{}  Règle inactive : elle ne fait rien.", icon::PAUSE)));
+                    ui.label(small(p, format!("{}  {}", icon::PAUSE, tr!("Règle inactive : elle ne fait rien."))));
                 }
                 Err(problem) => {
                     ui.label(RichText::new(problem).size(12.0).color(p.danger));
@@ -825,7 +858,7 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
     if let Some(index) = remove {
         rules.forms.remove(index);
     }
-    if ui.button(format!("{}  Ajouter une règle", icon::PLUS)).clicked() {
+    if ui.button(format!("{}  {}", icon::PLUS, tr!("Ajouter une règle"))).clicked() {
         rules.forms.push(new_rule(rules.forms.len()));
     }
 }
@@ -833,7 +866,10 @@ fn lifecycle_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<RuleForm>>) 
 fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
     let rules = match state {
         Loaded::Loading => return loading(ui, p),
-        Loaded::Failed(error) => return unavailable(ui, p, "les règles CORS", error),
+        Loaded::Failed(error) => {
+            let titles = (tr!("Ce serveur ne gère pas les règles CORS"), tr!("Impossible de lire les règles CORS"));
+            return unavailable(ui, p, titles, error);
+        }
         Loaded::Ready(rules) => rules,
     };
     let mut switch_problem = None;
@@ -843,8 +879,10 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
             ui.add(
                 Label::new(small(
                     p,
-                    "Autorise des pages web d'autres domaines à lire ou envoyer des fichiers de ce bucket \
-                     depuis le navigateur.",
+                    tr!(
+                        "Autorise des pages web d'autres domaines à lire ou envoyer des fichiers de ce bucket \
+                         depuis le navigateur."
+                    ),
                 ))
                 .wrap(),
             );
@@ -856,7 +894,7 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
         });
     });
     if let Some(problem) = switch_problem {
-        note(ui, p, icon::WARNING_CIRCLE, p.danger, &format!("Passage impossible : {problem}"));
+        note(ui, p, icon::WARNING_CIRCLE, p.danger, &tr!("Passage impossible : {problem}", problem));
     }
     ui.add_space(8.0);
 
@@ -870,7 +908,7 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
         ui.add_space(30.0);
         ui.vertical_centered(|ui| {
             ui.label(RichText::new(icon::GLOBE).size(34.0).color(p.faint));
-            ui.label(muted(p, "Aucune règle : les navigateurs refusent les requêtes venues d'autres sites."));
+            ui.label(muted(p, tr!("Aucune règle : les navigateurs refusent les requêtes venues d'autres sites.")));
         });
         ui.add_space(12.0);
     }
@@ -880,17 +918,17 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
         card(ui, p, |ui| {
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(small(p, "Origines autorisées (une par ligne)"));
+                    ui.label(small(p, tr!("Origines autorisées (une par ligne)")));
                     ui.add(
                         TextEdit::multiline(&mut form.origins)
-                            .hint_text("https://exemple.fr")
+                            .hint_text(tr!("https://exemple.fr"))
                             .desired_rows(3)
                             .desired_width(column)
                             .margin(Margin::symmetric(10, 7)),
                     );
                 });
                 ui.vertical(|ui| {
-                    ui.label(small(p, "Méthodes"));
+                    ui.label(small(p, tr!("Méthodes")));
                     ui.horizontal_wrapped(|ui| {
                         ui.set_max_width(column);
                         for (method, ticked) in METHODS.iter().zip(form.methods.iter_mut()) {
@@ -899,13 +937,13 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label(small(p, "Cache"));
+                        ui.label(small(p, tr!("Cache")));
                         ui.add(TextEdit::singleline(&mut form.max_age).desired_width(60.0).margin(Margin::symmetric(8, 4)));
                         ui.label(small(p, "s"));
                     });
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if icon_button(ui, p, icon::TRASH, "Retirer cette règle", true).clicked() {
+                    if icon_button(ui, p, icon::TRASH, tr!("Retirer cette règle"), true).clicked() {
                         remove = Some(index);
                     }
                 });
@@ -913,7 +951,7 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
             ui.add_space(6.0);
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(small(p, "En-têtes autorisés"));
+                    ui.label(small(p, tr!("En-têtes autorisés")));
                     ui.add(
                         TextEdit::multiline(&mut form.allowed_headers)
                             .hint_text("*")
@@ -923,7 +961,7 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
                     );
                 });
                 ui.vertical(|ui| {
-                    ui.label(small(p, "En-têtes exposés"));
+                    ui.label(small(p, tr!("En-têtes exposés")));
                     ui.add(
                         TextEdit::multiline(&mut form.expose_headers)
                             .hint_text("ETag")
@@ -933,15 +971,19 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
                     );
                 });
                 ui.vertical(|ui| {
-                    ui.label(small(p, "Nom (facultatif)"));
+                    ui.label(small(p, tr!("Nom (facultatif)")));
                     ui.add(TextEdit::singleline(&mut form.id).desired_width(column).margin(Margin::symmetric(10, 7)));
                 });
             });
-            if let Err(problem) = form.to_doc().and_then(|rule| {
-                CorsDoc { rules: vec![rule] }.validate().map_err(|error| error.to_string())
-            }) {
+            // In its own card, a rule without a name needs no "Règle 1".
+            let problem = form.to_doc().and_then(|rule| match rule.problem() {
+                Some(problem) if rule.id.is_none() => Err(problem),
+                Some(problem) => Err(tr!("{name} : {problem}", name = rule.label(0), problem)),
+                None => Ok(()),
+            });
+            if let Err(problem) = problem {
                 ui.add_space(2.0);
-                ui.label(RichText::new(problem.replace("Règle 1 : ", "")).size(12.0).color(p.danger));
+                ui.label(RichText::new(problem).size(12.0).color(p.danger));
             }
         });
         ui.add_space(8.0);
@@ -949,7 +991,7 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
     if let Some(index) = remove {
         rules.forms.remove(index);
     }
-    if ui.button(format!("{}  Ajouter une règle", icon::PLUS)).clicked() {
+    if ui.button(format!("{}  {}", icon::PLUS, tr!("Ajouter une règle"))).clicked() {
         rules.forms.push(CorsForm::default());
     }
 }
@@ -957,7 +999,13 @@ fn cors_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Rules<CorsForm>>) {
 fn policy_tab(ui: &mut Ui, p: &Palette, bucket: &str, state: &mut Loaded<PolicyText>) {
     let policy = match state {
         Loaded::Loading => return loading(ui, p),
-        Loaded::Failed(error) => return unavailable(ui, p, "les politiques de bucket", error),
+        Loaded::Failed(error) => {
+            let titles = (
+                tr!("Ce serveur ne gère pas les politiques de bucket"),
+                tr!("Impossible de lire les politiques de bucket"),
+            );
+            return unavailable(ui, p, titles, error);
+        }
         Loaded::Ready(policy) => policy,
     };
     ui.horizontal(|ui| {
@@ -966,16 +1014,18 @@ fn policy_tab(ui: &mut Ui, p: &Palette, bucket: &str, state: &mut Loaded<PolicyT
             ui.add(
                 Label::new(small(
                     p,
-                    "Document JSON qui accorde ou refuse des droits sur le bucket et ses objets. Videz-le pour \
-                     retirer la politique.",
+                    tr!(
+                        "Document JSON qui accorde ou refuse des droits sur le bucket et ses objets. Videz-le \
+                         pour retirer la politique."
+                    ),
                 ))
                 .wrap(),
             );
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
             if ui
-                .button(format!("{}  Modèle : lecture publique", icon::GLOBE))
-                .on_hover_text("Tout le monde peut lire les objets du bucket (s3:GetObject)")
+                .button(format!("{}  {}", icon::GLOBE, tr!("Modèle : lecture publique")))
+                .on_hover_text(tr!("Tout le monde peut lire les objets du bucket (s3:GetObject)"))
                 .clicked()
             {
                 policy.text = policy::public_read(bucket);
@@ -988,16 +1038,16 @@ fn policy_tab(ui: &mut Ui, p: &Palette, bucket: &str, state: &mut Loaded<PolicyT
         ui.add(
             TextEdit::multiline(&mut policy.text)
                 .code_editor()
-                .hint_text("Aucune politique")
+                .hint_text(tr!("Aucune politique"))
                 .desired_rows(16)
                 .desired_width(ui.available_width())
                 .margin(Margin::symmetric(10, 8)),
         );
         ui.add_space(4.0);
         let text = if policy.saved.is_empty() {
-            "Aucune politique : seuls les comptes autorisés accèdent au bucket."
+            tr!("Aucune politique : seuls les comptes autorisés accèdent au bucket.")
         } else {
-            "La politique sera retirée à l'enregistrement."
+            tr!("La politique sera retirée à l'enregistrement.")
         };
         ui.label(small(p, text));
     } else {
@@ -1008,25 +1058,34 @@ fn policy_tab(ui: &mut Ui, p: &Palette, bucket: &str, state: &mut Loaded<PolicyT
 fn public_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Public>) {
     let public = match state {
         Loaded::Loading => return loading(ui, p),
-        Loaded::Failed(error) => return unavailable(ui, p, "le blocage de l'accès public", error),
+        Loaded::Failed(error) => {
+            let titles = (
+                tr!("Ce serveur ne gère pas le blocage de l'accès public"),
+                tr!("Impossible de lire le blocage de l'accès public"),
+            );
+            return unavailable(ui, p, titles, error);
+        }
         Loaded::Ready(public) => public,
     };
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.set_max_width(WIDTH - 290.0);
-            let mut text = "Ces garde-fous empêchent de rendre public le contenu du bucket par erreur, quelles que \
-                            soient les ACL et la politique. Le blocage du compte, s'il existe, prime."
-                .to_owned();
+            let mut text = tr!(
+                "Ces garde-fous empêchent de rendre public le contenu du bucket par erreur, quelles que soient \
+                 les ACL et la politique. Le blocage du compte, s'il existe, prime."
+            )
+            .to_owned();
             if !public.configured {
-                text.push_str(" Rien n'est bloqué sur ce bucket pour l'instant.");
+                text.push(' ');
+                text.push_str(tr!("Rien n'est bloqué sur ce bucket pour l'instant."));
             }
             ui.add(Label::new(small(p, text)).wrap());
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-            if ui.button("Tout autoriser").clicked() {
+            if ui.button(tr!("Tout autoriser")).clicked() {
                 public.access = PublicAccess::default();
             }
-            if ui.button(format!("{}  Tout bloquer", icon::SHIELD_CHECK)).clicked() {
+            if ui.button(format!("{}  {}", icon::SHIELD_CHECK, tr!("Tout bloquer"))).clicked() {
                 public.access = PublicAccess::ALL;
             }
         });
@@ -1036,23 +1095,23 @@ fn public_tab(ui: &mut Ui, p: &Palette, state: &mut Loaded<Public>) {
     let options: [(&mut bool, &str, &str); 4] = [
         (
             &mut access.block_public_acls,
-            "Bloquer les nouvelles ACL publiques",
-            "BlockPublicAcls — refuse les envois et changements d'ACL qui rendraient un objet public.",
+            tr!("Bloquer les nouvelles ACL publiques"),
+            tr!("BlockPublicAcls — refuse les envois et changements d'ACL qui rendraient un objet public."),
         ),
         (
             &mut access.ignore_public_acls,
-            "Ignorer les ACL publiques existantes",
-            "IgnorePublicAcls — les objets déjà publics par ACL ne le sont plus.",
+            tr!("Ignorer les ACL publiques existantes"),
+            tr!("IgnorePublicAcls — les objets déjà publics par ACL ne le sont plus."),
         ),
         (
             &mut access.block_public_policy,
-            "Bloquer les nouvelles politiques publiques",
-            "BlockPublicPolicy — refuse une politique de bucket qui accorderait un accès public.",
+            tr!("Bloquer les nouvelles politiques publiques"),
+            tr!("BlockPublicPolicy — refuse une politique de bucket qui accorderait un accès public."),
         ),
         (
             &mut access.restrict_public_buckets,
-            "Restreindre l'accès si la politique est publique",
-            "RestrictPublicBuckets — seuls les services AWS et les comptes autorisés passent.",
+            tr!("Restreindre l'accès si la politique est publique"),
+            tr!("RestrictPublicBuckets — seuls les services AWS et les comptes autorisés passent."),
         ),
     ];
     card(ui, p, |ui| {

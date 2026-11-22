@@ -26,7 +26,9 @@ const LIST_WIDTH: f32 = 250.0;
 const LIST_HEIGHT: f32 = 318.0;
 const EDITOR_WIDTH: f32 = 420.0;
 /// How the variables are written, said wherever a command is typed.
-const SYNTAX: &str = "Variables : {{nom}} est demandé au lancement, {{nom:valeur}} propose une valeur.";
+fn syntax() -> &'static str {
+    tr!("Variables : {{nom}} est demandé au lancement, {{nom:valeur}} propose une valeur.")
+}
 
 /// One snippet in a list: its name, and the start of its command.
 fn row(ui: &mut Ui, p: &Palette, snippet: &Snippet, selected: bool, height: f32) -> Response {
@@ -116,7 +118,7 @@ pub(super) fn picker(ui: &mut Ui, p: &Palette, shared: &Published, tab: u64, act
     let before = query.clone();
     ui.add(
         TextEdit::singleline(&mut query)
-            .hint_text(format!("{}  Rechercher un snippet…", icon::MAGNIFYING_GLASS))
+            .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher un snippet…")))
             .margin(Margin::symmetric(8, 6))
             .desired_width(f32::INFINITY),
     )
@@ -128,9 +130,9 @@ pub(super) fn picker(ui: &mut Ui, p: &Palette, shared: &Published, tab: u64, act
 
     if found.is_empty() {
         let text = if shared.snippets.is_empty() {
-            "Aucun snippet enregistré.\nUn snippet est une commande prête à taper ici."
+            tr!("Aucun snippet enregistré.\nUn snippet est une commande prête à taper ici.")
         } else {
-            "Aucun snippet ne correspond."
+            tr!("Aucun snippet ne correspond.")
         };
         ui.add_space(8.0);
         ui.vertical_centered(|ui| ui.label(RichText::new(text).color(p.muted)));
@@ -161,16 +163,16 @@ pub(super) fn picker(ui: &mut Ui, p: &Palette, shared: &Published, tab: u64, act
     ui.separator();
     let mut close = false;
     ui.horizontal(|ui| {
-        if ui.button(format!("{}  Nouveau…", icon::PLUS)).clicked() {
+        if ui.button(format!("{}  {}", icon::PLUS, tr!("Nouveau…"))).clicked() {
             actions.push(Action::SshPower(PowerAction::NewSnippet));
             close = true;
         }
-        if ui.button(format!("{}  Gérer…", icon::NOTE_PENCIL)).clicked() {
+        if ui.button(format!("{}  {}", icon::NOTE_PENCIL, tr!("Gérer…"))).clicked() {
             actions.push(Action::SshPower(PowerAction::ManageSnippets(None)));
             close = true;
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new("Entrée lancer").size(11.5).color(p.faint));
+            ui.label(RichText::new(tr!("Entrée lancer")).size(11.5).color(p.faint));
         });
     });
     if let Some(snippet) = run {
@@ -220,7 +222,7 @@ pub fn palette_rows(
     ui.add_space(if first > 0 { 8.0 } else { 2.0 });
     ui.horizontal(|ui| {
         ui.add_space(10.0);
-        let heading = format!("SNIPPETS  ·  DANS {}", target.to_uppercase());
+        let heading = tr!("SNIPPETS  ·  DANS {target}", target = target.to_uppercase());
         ui.add(Label::new(RichText::new(heading).size(11.0).color(p.faint)).truncate());
     });
     let mut clicked = None;
@@ -241,7 +243,7 @@ pub fn palette_rows(
 /// `first` rows, is highlighted.
 pub fn palette_hints(selected: usize, first: usize, found: &[Snippet]) -> Option<&'static str> {
     (selected >= first && !found.is_empty())
-        .then_some("↑↓ choisir   ·   Entrée lancer le snippet   ·   > snippets seuls   ·   Échap fermer")
+        .then_some(tr!("↑↓ choisir   ·   Entrée lancer le snippet   ·   > snippets seuls   ·   Échap fermer"))
 }
 
 /// What picking a snippet in the palette does: run it in the terminal in use.
@@ -267,7 +269,7 @@ fn chip(ui: &mut Ui, p: &Palette, name: Option<&str>) -> bool {
                     Some(name) => (RichText::new(icon::LIGHTNING).color(p.accent), RichText::new(name).color(p.text)),
                     None => (
                         RichText::new(icon::WARNING_CIRCLE).color(p.danger),
-                        RichText::new("Snippet supprimé").color(p.muted),
+                        RichText::new(tr!("Snippet supprimé")).color(p.muted),
                     ),
                 };
                 ui.label(glyph.size(13.0));
@@ -275,7 +277,7 @@ fn chip(ui: &mut Ui, p: &Palette, name: Option<&str>) -> bool {
                 let cross = ui
                     .add(Label::new(RichText::new(icon::X).size(11.0).color(p.muted)).sense(Sense::click()))
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text("Ne plus lancer au démarrage");
+                    .on_hover_text(tr!("Ne plus lancer au démarrage"));
                 removed = cross.clicked();
             });
         });
@@ -291,15 +293,18 @@ pub fn startup_field(ui: &mut Ui, p: &Palette, startup: &mut Startup) {
     let open = ui.data(|data| data.get_temp::<bool>(memory)).unwrap_or(!startup.is_empty());
     let steps = startup.steps().len();
     let title = match (open, steps) {
-        (true, _) | (false, 0) => "Au démarrage du terminal (facultatif)".to_owned(),
-        (false, 1) => "Au démarrage du terminal : 1 commande".to_owned(),
-        (false, _) => format!("Au démarrage du terminal : {steps} commandes"),
+        (true, _) | (false, 0) => tr!("Au démarrage du terminal (facultatif)").to_owned(),
+        (false, _) => trn!(
+            steps,
+            "Au démarrage du terminal : {n} commande",
+            "Au démarrage du terminal : {n} commandes"
+        ),
     };
     let caret = if open { icon::CARET_DOWN } else { icon::CARET_RIGHT };
     let toggle = ui
         .add(Label::new(RichText::new(format!("{caret}  {title}")).size(12.0).color(p.muted)).sense(Sense::click()))
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text("Des snippets ou une commande tapés dans le terminal dès que le shell est prêt");
+        .on_hover_text(tr!("Des snippets ou une commande tapés dans le terminal dès que le shell est prêt"));
     if toggle.clicked() {
         ui.data_mut(|data| data.insert_temp(memory, !open));
     }
@@ -320,7 +325,7 @@ pub fn startup_field(ui: &mut Ui, p: &Palette, startup: &mut Startup) {
         if let Some(index) = removed {
             startup.snippets.remove(index);
         }
-        let add = ui.add(egui::Button::new(RichText::new(format!("{}  Snippet", icon::PLUS)).size(13.0)));
+        let add = ui.add(egui::Button::new(RichText::new(format!("{}  {}", icon::PLUS, tr!("Snippet"))).size(13.0)));
         Popup::menu(&add).show(|ui| {
             ui.set_min_width(220.0);
             let left: Vec<&Snippet> = shared
@@ -329,9 +334,10 @@ pub fn startup_field(ui: &mut Ui, p: &Palette, startup: &mut Startup) {
                 .filter(|snippet| !startup.snippets.contains(&snippet.id))
                 .collect();
             if shared.snippets.is_empty() {
-                ui.label(muted(p, "Aucun snippet enregistré : créez-en\ndepuis le bouton Snippets d'un terminal."));
+                let text = tr!("Aucun snippet enregistré : créez-en\ndepuis le bouton Snippets d'un terminal.");
+                ui.label(muted(p, text));
             } else if left.is_empty() {
-                ui.label(muted(p, "Tous les snippets sont déjà choisis."));
+                ui.label(muted(p, tr!("Tous les snippets sont déjà choisis.")));
             }
             for snippet in left {
                 if ui.button(format!("{}  {}", icon::LIGHTNING, snippet.title())).clicked() {
@@ -348,9 +354,9 @@ pub fn startup_field(ui: &mut Ui, p: &Palette, startup: &mut Startup) {
             .desired_rows(1)
             .desired_width(FIELD_WIDTH)
             .margin(Margin::symmetric(10, 7))
-            .hint_text("Commande, ex. cd /var/www && git status"),
+            .hint_text(tr!("Commande, ex. cd /var/www && git status")),
     );
-    ui.label(small(p, "Tapé une fois le shell prêt, à chaque ouverture du terminal."));
+    ui.label(small(p, tr!("Tapé une fois le shell prêt, à chaque ouverture du terminal.")));
     ui.add_space(6.0);
 }
 
@@ -450,12 +456,14 @@ impl Manager {
 
 pub(super) fn manager(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(LIST_WIDTH + EDITOR_WIDTH + 20.0);
-    ui.label(RichText::new("Snippets").font(semibold(17.0)).color(p.text));
+    ui.label(RichText::new(tr!("Snippets")).font(semibold(17.0)).color(p.text));
     ui.add(
         Label::new(muted(
             p,
-            "Des commandes prêtes à taper dans un terminal : depuis le bouton Snippets au-dessus du terminal, \
-             le menu de l'onglet, Ctrl+K, ou à l'ouverture d'une connexion.",
+            tr!(
+                "Des commandes prêtes à taper dans un terminal : depuis le bouton Snippets au-dessus du terminal, \
+                 le menu de l'onglet, Ctrl+K, ou à l'ouverture d'une connexion."
+            ),
         ))
         .wrap(),
     );
@@ -476,7 +484,7 @@ pub(super) fn manager(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame:
 
     ui.add_space(12.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if ui.button("Fermer").clicked() {
+        if ui.button(tr!("Fermer")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -485,7 +493,7 @@ pub(super) fn manager(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame:
 fn list(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame: bool) {
     let search = ui.add(
         TextEdit::singleline(&mut form.query)
-            .hint_text(format!("{}  Rechercher…", icon::MAGNIFYING_GLASS))
+            .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Rechercher…")))
             .margin(Margin::symmetric(10, 7))
             .desired_width(f32::INFINITY),
     );
@@ -510,9 +518,9 @@ fn list(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame: bool) {
                     if found.is_empty() {
                         ui.add_space(16.0);
                         let text = if form.snippets.is_empty() {
-                            "Aucun snippet pour l'instant."
+                            tr!("Aucun snippet pour l'instant.")
                         } else {
-                            "Aucun snippet ne correspond."
+                            tr!("Aucun snippet ne correspond.")
                         };
                         ui.vertical_centered(|ui| ui.label(muted(p, text)));
                     }
@@ -527,7 +535,7 @@ fn list(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame: bool) {
         form.select(&id);
     }
     ui.add_space(6.0);
-    let new = egui::Button::new(format!("{}  Nouveau snippet", icon::PLUS)).min_size(vec2(LIST_WIDTH, 0.0));
+    let new = egui::Button::new(format!("{}  {}", icon::PLUS, tr!("Nouveau snippet"))).min_size(vec2(LIST_WIDTH, 0.0));
     if ui.add(new).clicked() {
         form.start_new();
     }
@@ -535,16 +543,16 @@ fn list(ui: &mut Ui, p: &Palette, form: &mut Manager, first_frame: bool) {
 
 fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
     let saved = form.is_saved();
-    let heading = if saved { "Modifier le snippet" } else { "Nouveau snippet" };
+    let heading = if saved { tr!("Modifier le snippet") } else { tr!("Nouveau snippet") };
     ui.label(RichText::new(heading).font(semibold(14.5)).color(p.text));
     ui.add_space(4.0);
 
     let focus = std::mem::take(&mut form.focus_name);
     let draft = &mut form.draft;
-    labelled(ui, p, "Nom", |ui| {
+    labelled(ui, p, tr!("Nom"), |ui| {
         let name = ui.add(
             TextEdit::singleline(&mut draft.name)
-                .hint_text("Redémarrer nginx")
+                .hint_text(tr!("Redémarrer nginx"))
                 .margin(Margin::symmetric(10, 7))
                 .desired_width(EDITOR_WIDTH),
         );
@@ -552,7 +560,7 @@ fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
             name.request_focus();
         }
     });
-    labelled(ui, p, "Commande", |ui| {
+    labelled(ui, p, tr!("Commande"), |ui| {
         ui.add(
             TextEdit::multiline(&mut draft.command)
                 .code_editor()
@@ -562,7 +570,7 @@ fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
                 .hint_text("sudo systemctl restart {{service:nginx}}"),
         );
     });
-    ui.add(Label::new(RichText::new(SYNTAX).size(11.5).color(p.faint)).wrap());
+    ui.add(Label::new(RichText::new(syntax()).size(11.5).color(p.faint)).wrap());
     let variables = draft.variables();
     if !variables.is_empty() {
         let names: Vec<String> = variables
@@ -574,7 +582,11 @@ fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
             .collect();
         ui.add(
             Label::new(
-                RichText::new(format!("{}  Demandé au lancement : {}", icon::BRACKETS_CURLY, names.join(", ")))
+                RichText::new(format!(
+                    "{}  {}",
+                    icon::BRACKETS_CURLY,
+                    tr!("Demandé au lancement : {names}", names = names.join(", "))
+                ))
                     .size(12.0)
                     .color(p.accent),
             )
@@ -582,31 +594,31 @@ fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
         );
     }
     ui.add_space(6.0);
-    labelled(ui, p, "Description (facultatif)", |ui| {
+    labelled(ui, p, tr!("Description (facultatif)"), |ui| {
         ui.add(
             TextEdit::singleline(&mut draft.description)
-                .hint_text("Ce que fait la commande, pour s'en souvenir")
+                .hint_text(tr!("Ce que fait la commande, pour s'en souvenir"))
                 .margin(Margin::symmetric(10, 7))
                 .desired_width(EDITOR_WIDTH),
         );
     });
-    checkbox(ui, p, &mut draft.press_enter, "Appuyer sur Entrée après la commande").on_hover_text(
-        "Sinon la commande est seulement tapée, pour la compléter avant de la lancer soi-même.",
-    );
+    checkbox(ui, p, &mut draft.press_enter, tr!("Appuyer sur Entrée après la commande")).on_hover_text(tr!(
+        "Sinon la commande est seulement tapée, pour la compléter avant de la lancer soi-même."
+    ));
     ui.add_space(8.0);
 
     let valid = draft.is_valid();
     let status = match (valid, saved) {
-        (true, _) => format!("{}  Enregistré automatiquement", icon::CHECK),
-        (false, true) => "La commande est vide : la version précédente est conservée.".to_owned(),
-        (false, false) => "Tapez une commande pour enregistrer ce snippet.".to_owned(),
+        (true, _) => format!("{}  {}", icon::CHECK, tr!("Enregistré automatiquement")),
+        (false, true) => tr!("La commande est vide : la version précédente est conservée.").to_owned(),
+        (false, false) => tr!("Tapez une commande pour enregistrer ce snippet.").to_owned(),
     };
     ui.label(RichText::new(status).size(11.5).color(p.faint));
     ui.add_space(6.0);
 
     ui.horizontal(|ui| {
         if saved {
-            let text = if form.confirm_delete { "Confirmer la suppression" } else { "Supprimer" };
+            let text = if form.confirm_delete { tr!("Confirmer la suppression") } else { tr!("Supprimer") };
             let button = egui::Button::new(RichText::new(format!("{}  {text}", icon::TRASH)).color(p.danger));
             if ui.add(button).clicked() {
                 if form.confirm_delete {
@@ -618,8 +630,14 @@ fn editor(ui: &mut Ui, p: &Palette, form: &mut Manager, outcome: &mut Outcome) {
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let (label, hint) = match &form.target {
-                Some(target) => (format!("{}  Lancer", icon::PLAY), format!("Taper la commande dans « {target} »")),
-                None => (format!("{}  Lancer", icon::PLAY), "Ouvrez d'abord un terminal SSH".to_owned()),
+                Some(target) => (
+                    format!("{}  {}", icon::PLAY, tr!("Lancer")),
+                    tr!("Taper la commande dans « {target} »", target),
+                ),
+                None => (
+                    format!("{}  {}", icon::PLAY, tr!("Lancer")),
+                    tr!("Ouvrez d'abord un terminal SSH").to_owned(),
+                ),
             };
             let enabled = form.target.is_some() && form.draft.is_valid();
             if primary_button(ui, p, &label, enabled).on_hover_text(hint).clicked() {
@@ -685,17 +703,18 @@ impl VariablesForm {
 
 pub(super) fn variables(ui: &mut Ui, p: &Palette, form: &mut VariablesForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH);
-    ui.label(RichText::new(format!("Lancer « {} »", form.snippet.title())).font(semibold(17.0)).color(p.text));
+    let title = tr!("Lancer « {name} »", name = form.snippet.title());
+    ui.label(RichText::new(title).font(semibold(17.0)).color(p.text));
     ui.add_space(2.0);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label(muted(p, format!("Dans {}", form.target)));
+        ui.label(muted(p, tr!("Dans {target}", target = form.target)));
         if form.others > 0 {
-            let others = if form.others > 1 {
-                format!("et {} autres terminaux en diffusion", form.others)
-            } else {
-                "et 1 autre terminal en diffusion".to_owned()
-            };
+            let others = trn!(
+                form.others,
+                "et {n} autre terminal en diffusion",
+                "et {n} autres terminaux en diffusion"
+            );
             ui.label(RichText::new(format!("{}  {others}", icon::BROADCAST)).color(broadcast_color(p)));
         }
     });
@@ -714,7 +733,7 @@ pub(super) fn variables(ui: &mut Ui, p: &Palette, form: &mut VariablesForm, firs
         ui.add_space(6.0);
     }
 
-    ui.label(small(p, "Sera tapé :"));
+    ui.label(small(p, tr!("Sera tapé :")));
     Frame::new()
         .fill(p.surface)
         .corner_radius(RADIUS)
@@ -730,7 +749,7 @@ pub(super) fn variables(ui: &mut Ui, p: &Palette, form: &mut VariablesForm, firs
             ui.add(Label::new(RichText::new(shown).monospace().color(p.text)).wrap());
         });
     if !form.snippet.press_enter {
-        ui.label(small(p, "La commande est tapée sans être lancée."));
+        ui.label(small(p, tr!("La commande est tapée sans être lancée.")));
     }
 
     if ui.input(|input| input.key_pressed(Key::Enter)) {
@@ -738,10 +757,10 @@ pub(super) fn variables(ui: &mut Ui, p: &Palette, form: &mut VariablesForm, firs
     }
     ui.add_space(12.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, &format!("{}  Lancer", icon::PLAY), true).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::PLAY, tr!("Lancer")), true).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

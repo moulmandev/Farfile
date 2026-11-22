@@ -65,15 +65,15 @@ pub fn deleted_panel(ui: &mut Ui, p: &Palette, session: &mut Session, actions: &
                 None => {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new().size(14.0).color(p.muted));
-                        ui.label(muted(p, "Recherche des fichiers supprimés…"));
+                        ui.label(muted(p, tr!("Recherche des fichiers supprimés…")));
                     });
                 }
                 Some(Err(error)) => {
                     let text = if error.unsupported() {
-                        "Ce serveur ne gère pas les versions : les fichiers supprimés ne peuvent pas être retrouvés."
+                        tr!("Ce serveur ne gère pas les versions : les fichiers supprimés ne peuvent pas être retrouvés.")
                             .to_owned()
                     } else {
-                        format!("Impossible de chercher les fichiers supprimés : {error}")
+                        tr!("Impossible de chercher les fichiers supprimés : {error}", error)
                     };
                     ui.add(Label::new(RichText::new(text).size(13.0).color(p.danger)).wrap());
                 }
@@ -81,11 +81,13 @@ pub fn deleted_panel(ui: &mut Ui, p: &Palette, session: &mut Session, actions: &
                     ui.horizontal_wrapped(|ui| {
                         ui.label(muted(
                             p,
-                            "La gestion des versions n'est pas activée sur ce bucket : un fichier supprimé ne peut \
-                             pas être récupéré.",
+                            tr!(
+                                "La gestion des versions n'est pas activée sur ce bucket : un fichier supprimé ne \
+                                 peut pas être récupéré."
+                            ),
                         ));
                         if let Some(bucket) = session.path.segments().first()
-                            && ui.small_button("Réglages du bucket…").clicked()
+                            && ui.small_button(tr!("Réglages du bucket…")).clicked()
                         {
                             actions.push(Action::S3(S3Action::BucketSettings(bucket.clone())));
                         }
@@ -95,16 +97,16 @@ pub fn deleted_panel(ui: &mut Ui, p: &Palette, session: &mut Session, actions: &
                     let rows = rows.unwrap_or_default();
                     if rows.is_empty() {
                         let text = if filter.is_empty() {
-                            "Aucun fichier supprimé dans ce dossier."
+                            tr!("Aucun fichier supprimé dans ce dossier.")
                         } else {
-                            "Aucun fichier supprimé ne correspond au filtre."
+                            tr!("Aucun fichier supprimé ne correspond au filtre.")
                         };
                         ui.label(muted(p, text));
                     } else {
                         list(ui, p, state, &rows, actions);
                     }
                     if found.truncated {
-                        ui.label(small(p, "Trop de versions pour tout parcourir : la liste est incomplète."));
+                        ui.label(small(p, tr!("Trop de versions pour tout parcourir : la liste est incomplète.")));
                     }
                 }
             }
@@ -151,14 +153,14 @@ fn rows(found: &FolderVersions, listed: &HashSet<&str>, filter: &str) -> Vec<Row
 fn header(ui: &mut Ui, p: &Palette, state: &Browse, rows: Option<&[Row]>, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::CLOCK_COUNTER_CLOCKWISE).size(15.0).color(p.accent));
-        ui.label(RichText::new("Fichiers supprimés").font(theme::semibold(13.5)).color(p.text));
+        ui.label(RichText::new(tr!("Fichiers supprimés")).font(theme::semibold(13.5)).color(p.text));
         if let Some(rows) = rows
             && !rows.is_empty()
         {
             ui.label(small(p, format!("· {}", rows.len())));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icon_button(ui, p, icon::X, "Masquer les fichiers supprimés", true).clicked() {
+            if icon_button(ui, p, icon::X, tr!("Masquer les fichiers supprimés"), true).clicked() {
                 actions.push(Action::S3(S3Action::ToggleDeleted));
             }
             let restorable: Vec<String> =
@@ -166,7 +168,7 @@ fn header(ui: &mut Ui, p: &Palette, state: &Browse, rows: Option<&[Row]>, action
             if restorable.len() > 1 {
                 let idle = state.restoring.is_empty();
                 if ui
-                    .add_enabled(idle, egui::Button::new(format!("{}  Tout restaurer", icon::ARROW_COUNTER_CLOCKWISE)))
+                    .add_enabled(idle, egui::Button::new(format!("{}  {}", icon::ARROW_COUNTER_CLOCKWISE, tr!("Tout restaurer"))))
                     .clicked()
                 {
                     actions.push(Action::S3(S3Action::Restore(restorable)));
@@ -191,17 +193,18 @@ fn list(ui: &mut Ui, p: &Palette, state: &Browse, rows: &[Row], actions: &mut Ve
                     let name = row.name.trim_end_matches('/');
                     ui.add(Label::new(RichText::new(name).color(p.muted).strikethrough()).truncate());
                     let detail = if row.is_folder() {
-                        "dossier dont tout le contenu est supprimé".to_owned()
+                        tr!("dossier dont tout le contenu est supprimé").to_owned()
                     } else {
                         let mut text = match row.deleted_at {
-                            Some(at) => format!("supprimé le {}", format::date(at)),
-                            None => "supprimé".to_owned(),
+                            Some(at) => tr!("supprimé le {date}", date = format::date(at)),
+                            None => tr!("supprimé").to_owned(),
                         };
                         if let Some(size) = row.size {
                             text.push_str(&format!(" · {}", format::size(size)));
                         }
                         if !row.restorable {
-                            text.push_str(" · aucune version à restaurer");
+                            text.push_str(" · ");
+                            text.push_str(tr!("aucune version à restaurer"));
                         }
                         text
                     };
@@ -212,21 +215,21 @@ fn list(ui: &mut Ui, p: &Palette, state: &Browse, rows: &[Row], actions: &mut Ve
                         if restoring {
                             ui.add(egui::Spinner::new().size(14.0).color(p.muted));
                         } else if ui
-                            .add_enabled(row.restorable, egui::Button::new("Restaurer").small())
+                            .add_enabled(row.restorable, egui::Button::new(tr!("Restaurer")).small())
                             .on_hover_text(if row.is_folder() {
-                                "Fait réapparaître tous les fichiers supprimés de ce dossier"
+                                tr!("Fait réapparaître tous les fichiers supprimés de ce dossier")
                             } else {
-                                "Retire la suppression : la dernière version redevient le fichier actuel"
+                                tr!("Retire la suppression : la dernière version redevient le fichier actuel")
                             })
                             .clicked()
                         {
                             actions.push(Action::S3(S3Action::Restore(vec![row.name.clone()])));
                         }
                         if row.is_folder() {
-                            if ui.small_button("Ouvrir").clicked() {
+                            if ui.small_button(tr!("Ouvrir")).clicked() {
                                 actions.push(Action::S3(S3Action::OpenDeletedFolder(name.to_owned())));
                             }
-                        } else if ui.small_button("Versions…").clicked() {
+                        } else if ui.small_button(tr!("Versions…")).clicked() {
                             actions.push(Action::S3(S3Action::Versions(row.name.clone())));
                         }
                     });

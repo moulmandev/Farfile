@@ -686,9 +686,9 @@ impl Follow {
                     self.last_data = Some(now);
                     self.log.feed(&bytes);
                 }
-                Fed::Restarted => self.log.note("Le fichier a été tronqué ou remplacé : suite du nouveau contenu"),
+                Fed::Restarted => self.log.note(tr!("Le fichier a été tronqué ou remplacé : suite du nouveau contenu")),
                 Fed::Skipped(bytes) => {
-                    self.log.note(format!("{} passés pour rattraper la fin du fichier", format::size(bytes)));
+                    self.log.note(tr!("{size} passés pour rattraper la fin du fichier", size = format::size(bytes)));
                 }
             }
         }

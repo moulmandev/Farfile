@@ -56,8 +56,8 @@ impl Finder {
             .size_limit(1 << 24)
             .build()
             .map_err(|error| match error {
-                regex::Error::Syntax(text) => text.lines().last().unwrap_or("expression invalide").trim().to_owned(),
-                _ => "expression trop complexe".to_owned(),
+                regex::Error::Syntax(text) => text.lines().last().unwrap_or(tr!("expression invalide")).trim().to_owned(),
+                _ => tr!("expression trop complexe").to_owned(),
             })?;
         Ok(Some(Self { regex, word: query.word, expand: query.regex }))
     }

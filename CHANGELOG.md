@@ -3,6 +3,24 @@
 Each release's section here becomes its notes on GitHub, and what the update
 dialog shows. Add a `## x.y.z` section before tagging `vx.y.z`.
 
+## 0.2.0
+
+- The interface speaks English, French, German and Spanish: the system's
+  language by default, or the one chosen from the globe at the foot of the
+  list of connections; sizes, decimals and dates follow it. Copies already
+  in use stay in French until another language is chosen
+- The installer speaks them too
+- Monitoring: a dashboard of several SSH servers at once (processor,
+  memory, disks, load, network, the last half hour as curves), opened
+  from **Surveillance** under "Cet ordinateur". Alerts when a disk, the
+  memory, the processor, the swap or the load crosses its threshold
+  (85 % to warn and 95 % critical by default, some only after lasting a
+  few minutes), or when a server stops answering; thresholds for all
+  servers or for one, told by a message in the window, a Windows
+  notification and the taskbar button, as chosen. Closing the window can
+  keep watching from the notification area. A login the server refuses
+  pauses its watch rather than trying again
+
 ## 0.1.0
 
 - First release: files on S3, SFTP and FTP (explicit FTPS too), SSH and local

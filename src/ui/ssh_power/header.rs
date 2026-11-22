@@ -41,11 +41,11 @@ pub fn terminal_header(ui: &mut Ui, p: &Palette, tab: &mut Tab, actions: &mut Ve
         labelled: rect.width() >= LABELS_WIDTH,
     };
     let id = Id::new(("terminal-header", tab.id));
-    let text = if broadcasting { "Arrêter de diffuser" } else { "Diffuser" };
+    let text = if broadcasting { tr!("Arrêter de diffuser") } else { tr!("Diffuser") };
     let tooltip = if broadcasting {
-        "Ce terminal ne reçoit plus ce qui est tapé dans les autres, et inversement"
+        tr!("Ce terminal ne reçoit plus ce qui est tapé dans les autres, et inversement")
     } else {
-        "Diffuser la saisie : ce qui est tapé ici part aussi vers les autres terminaux en diffusion"
+        tr!("Diffuser la saisie : ce qui est tapé ici part aussi vers les autres terminaux en diffusion")
     };
     if bar.button(ui, p, id.with("broadcast"), icon::BROADCAST, text, tooltip, broadcasting, orange).clicked() {
         actions.push(Action::SshPower(PowerAction::ToggleBroadcast(tab.id)));
@@ -53,18 +53,18 @@ pub fn terminal_header(ui: &mut Ui, p: &Palette, tab: &mut Tab, actions: &mut Ve
     // The overview reads the server over SSH.
     let overview = tab.power.stats.is_some();
     let tooltip = if overview {
-        "Masquer l'aperçu du serveur"
+        tr!("Masquer l'aperçu du serveur")
     } else {
-        "Afficher l'aperçu du serveur : processeur, mémoire, disques, réseau"
+        tr!("Afficher l'aperçu du serveur : processeur, mémoire, disques, réseau")
     };
     if tab.ssh.is_some()
-        && bar.button(ui, p, id.with("stats"), icon::GAUGE, "Aperçu", tooltip, overview, p.accent).clicked()
+        && bar.button(ui, p, id.with("stats"), icon::GAUGE, trc!("serveur", "Aperçu"), tooltip, overview, p.accent).clicked()
     {
         actions.push(Action::SshPower(PowerAction::ToggleStats(tab.id)));
     }
     let listing = Popup::is_id_open(ui.ctx(), picker_id(tab.id));
-    let tooltip = "Lancer un snippet : une commande enregistrée";
-    let picker = bar.button(ui, p, id.with("snippets"), icon::LIGHTNING, "Snippets", tooltip, listing, p.accent);
+    let tooltip = tr!("Lancer un snippet : une commande enregistrée");
+    let picker = bar.button(ui, p, id.with("snippets"), icon::LIGHTNING, tr!("Snippets"), tooltip, listing, p.accent);
     let shown = Popup::from_toggle_button_response(&picker)
         .id(picker_id(tab.id))
         .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
@@ -159,10 +159,13 @@ fn broadcast_banner(
     let orange = broadcast_color(p);
     let others = shared.receivers.saturating_sub(1);
     let text = match (short, others) {
-        (true, _) => format!("Diffusion · {}", crate::format::count(shared.receivers, "terminal", "terminaux")),
-        (false, 0) => "Diffusion de la saisie · aucun autre terminal".to_owned(),
-        (false, 1) => "Diffusion de la saisie · 1 autre terminal".to_owned(),
-        (false, _) => format!("Diffusion de la saisie · {others} autres terminaux"),
+        (true, _) => trn!(shared.receivers, "Diffusion · {n} terminal", "Diffusion · {n} terminaux"),
+        (false, 0) => tr!("Diffusion de la saisie · aucun autre terminal").to_owned(),
+        (false, _) => trn!(
+            others,
+            "Diffusion de la saisie · {n} autre terminal",
+            "Diffusion de la saisie · {n} autres terminaux"
+        ),
     };
     let painter = ui.painter().with_clip_rect(area);
     let y = area.center().y;
@@ -174,19 +177,19 @@ fn broadcast_banner(
     let label = Rect::from_min_size(pos2(area.left() + 22.0, y - galley.size().y / 2.0), galley.size());
     painter.galley(label.min, galley, orange);
     let explanation = if shared.receivers > 1 {
-        format!(
-            "Ce qui est tapé dans l'un des {} terminaux en diffusion part aussi dans les autres, \
+        tr!(
+            "Ce qui est tapé dans l'un des {count} terminaux en diffusion part aussi dans les autres, \
              repérables à leur cadre orange.",
-            shared.receivers
+            count = shared.receivers
         )
     } else {
-        "Aucun autre terminal ne diffuse : ce qui est tapé ici ira aussi dans ceux qui le feront.".to_owned()
+        tr!("Aucun autre terminal ne diffuse : ce qui est tapé ici ira aussi dans ceux qui le feront.").to_owned()
     };
     let banner = Rect::from_x_y_ranges(area.left()..=label.right(), area.y_range());
     ui.interact(banner, ui.id().with("broadcast-banner"), Sense::hover())
         .on_hover_text(explanation);
 
-    let stop = ui.painter().layout_no_wrap("Tout arrêter".to_owned(), FontId::proportional(12.5), orange);
+    let stop = ui.painter().layout_no_wrap(tr!("Tout arrêter").to_owned(), FontId::proportional(12.5), orange);
     let at = Rect::from_min_size(pos2(label.right() + 12.0, y - stop.size().y / 2.0), stop.size());
     if short || at.right() > area.right() {
         return label.right().min(area.right());
@@ -194,7 +197,7 @@ fn broadcast_banner(
     let response = ui
         .interact(at.expand(3.0), ui.id().with("stop-broadcast"), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text("Arrêter la diffusion dans tous les terminaux");
+        .on_hover_text(tr!("Arrêter la diffusion dans tous les terminaux"));
     let color = if response.hovered() { p.text } else { orange };
     ui.painter().galley(at.min, stop, color);
     ui.painter().hline(at.x_range(), at.bottom() + 1.0, Stroke::new(1.0, color.gamma_multiply(0.6)));
@@ -247,10 +250,10 @@ pub fn tab_menu(ui: &mut Ui, p: &Palette, tabs: &[Tab], tab: &Tab, actions: &mut
     let mut push = |action| actions.push(Action::SshPower(action));
 
     ui.separator();
-    ui.menu_button(format!("{}  Lancer un snippet", icon::LIGHTNING), |ui| {
+    ui.menu_button(format!("{}  {}", icon::LIGHTNING, tr!("Lancer un snippet")), |ui| {
         ui.set_min_width(230.0);
         if shared.snippets.is_empty() {
-            ui.label(muted(p, "Aucun snippet enregistré"));
+            ui.label(muted(p, tr!("Aucun snippet enregistré")));
         }
         for snippet in shared.snippets.iter().take(MENU_SNIPPETS) {
             if item(ui, true, snippet.title(), false) {
@@ -260,21 +263,21 @@ pub fn tab_menu(ui: &mut Ui, p: &Palette, tabs: &[Tab], tab: &Tab, actions: &mut
                 });
             }
         }
-        if shared.snippets.len() > MENU_SNIPPETS && item(ui, true, "Autres snippets…", false) {
+        if shared.snippets.len() > MENU_SNIPPETS && item(ui, true, tr!("Autres snippets…"), false) {
             push(PowerAction::ManageSnippets(None));
         }
         ui.separator();
-        if item(ui, true, format!("{}  Nouveau snippet…", icon::PLUS), false) {
+        if item(ui, true, format!("{}  {}", icon::PLUS, tr!("Nouveau snippet…")), false) {
             push(PowerAction::NewSnippet);
         }
-        if item(ui, true, format!("{}  Gérer les snippets…", icon::NOTE_PENCIL), false) {
+        if item(ui, true, format!("{}  {}", icon::NOTE_PENCIL, tr!("Gérer les snippets…")), false) {
             push(PowerAction::ManageSnippets(None));
         }
     });
 
     let shows_terminal = tab.panes.terminal();
     let overview = tab.power.stats.is_some();
-    let entry = item(ui, true, format!("{}  Aperçu du serveur", icon::GAUGE), overview);
+    let entry = item(ui, true, format!("{}  {}", icon::GAUGE, tr!("Aperçu du serveur")), overview);
     if entry {
         push(PowerAction::ToggleStats(tab.id));
     }
@@ -282,18 +285,18 @@ pub fn tab_menu(ui: &mut Ui, p: &Palette, tabs: &[Tab], tab: &Tab, actions: &mut
     // A submenu: the tab menu is long already.
     let terminals = tabs.iter().filter(|other| other.terminal.is_some()).count();
     let broadcasting = tabs.iter().any(|other| other.power.broadcast);
-    let title = RichText::new(format!("{}  Diffusion de la saisie", icon::BROADCAST));
+    let title = RichText::new(format!("{}  {}", icon::BROADCAST, tr!("Diffusion de la saisie")));
     let title = if tab.power.broadcast { title.color(broadcast_color(p)) } else { title };
     ui.menu_button(title, |ui| {
         ui.set_min_width(250.0);
-        let mine = item(ui, tab.terminal.is_some() && shows_terminal, "Diffuser la saisie", tab.power.broadcast);
+        let mine = item(ui, tab.terminal.is_some() && shows_terminal, tr!("Diffuser la saisie"), tab.power.broadcast);
         if mine {
             push(PowerAction::ToggleBroadcast(tab.id));
         }
-        if item(ui, terminals > 1, "Diffuser à tous les terminaux", false) {
+        if item(ui, terminals > 1, tr!("Diffuser à tous les terminaux"), false) {
             push(PowerAction::BroadcastAll);
         }
-        if item(ui, broadcasting, "Arrêter la diffusion", false) {
+        if item(ui, broadcasting, tr!("Arrêter la diffusion"), false) {
             push(PowerAction::StopBroadcast);
         }
     });

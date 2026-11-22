@@ -141,7 +141,7 @@ impl App {
                 match result {
                     Ok(opened) => editor.opened(opened, &prefs),
                     Err(error) if editor.is_ready() => {
-                        notices.push((format!("Rechargement de « {name} » impossible : {error}"), true));
+                        notices.push((tr!("Rechargement de « {name} » impossible : {error}", name, error), true));
                     }
                     Err(error) => editor.state = State::Failed(error),
                 }
@@ -173,7 +173,7 @@ impl App {
                         editor.saving = Saving::Failed(error.clone());
                         editor.then = Then::Nothing;
                         self.editor.quit_after = false;
-                        notices.push((format!("Enregistrement de « {name} » impossible : {error}"), true));
+                        notices.push((tr!("Enregistrement de « {name} » impossible : {error}", name, error), true));
                     }
                 }
             }
@@ -184,7 +184,7 @@ impl App {
         }
         // One question at a time: the others are said, to be saved again.
         for (_, name, _) in changed {
-            notices.push((format!("« {name} » a changé sur le serveur : enregistrez-le de nouveau pour choisir."), true));
+            notices.push((tr!("« {name} » a changé sur le serveur : enregistrez-le de nouveau pour choisir.", name), true));
         }
         for (text, error) in notices {
             self.toast(now, text, error);
@@ -259,10 +259,10 @@ impl App {
     /// Opens a file in the editor, unless it is too big for it.
     fn open_or_refuse(&mut self, source: Source, size: u64, beside: bool) {
         if size > MAX_SIZE {
-            let why = format!(
-                "Il pèse {}, au-delà des {} que l'éditeur intégré ouvre. L'aperçu en montre le début ; un autre programme peut l'ouvrir en entier.",
-                crate::format::size(size),
-                crate::format::size(MAX_SIZE)
+            let why = tr!(
+                "Il pèse {size}, au-delà des {max} que l'éditeur intégré ouvre. L'aperçu en montre le début ; un autre programme peut l'ouvrir en entier.",
+                size = crate::format::size(size),
+                max = crate::format::size(MAX_SIZE)
             );
             let dialog = EditorDialog::Refused {
                 name: source.path.name().to_owned(),
@@ -318,12 +318,12 @@ impl App {
                 _ => launch::start(&real, how, &self.settings.editor),
             });
             if let Err(error) = result {
-                self.toast(now, format!("Ouverture impossible : {error:#}"), true);
+                self.toast(now, tr!("Ouverture impossible : {error}", error = format!("{error:#}")), true);
             }
             return;
         }
         if how == Launch::Default && launch::kind(source.path.name()) == launch::Kind::Program {
-            return self.toast(now, "Ce type de fichier ne s'ouvre pas depuis un serveur.", true);
+            return self.toast(now, tr!("Ce type de fichier ne s'ouvre pas depuis un serveur."), true);
         }
         self.edit_remote(source.storage, source.path, source.origin, size, how, now);
     }
@@ -582,11 +582,11 @@ impl App {
                 self.settings.text_editor = crate::editor::prefs::EditorPrefs { builtin: form.builtin, ..form.prefs };
                 self.save_settings();
                 let label = if form.builtin {
-                    "l'éditeur intégré".to_owned()
+                    tr!("l'éditeur intégré").to_owned()
                 } else {
                     launch::editor_label(&self.settings.editor)
                 };
-                self.toast(now, format!("Les fichiers texte s'ouvrent désormais dans {label}"), false);
+                self.toast(now, tr!("Les fichiers texte s'ouvrent désormais dans {label}", label), false);
             }
         }
     }
@@ -599,9 +599,9 @@ impl App {
         if !std::mem::take(&mut form.browse) || dev::active() {
             return;
         }
-        let mut picker = rfd::FileDialog::new().set_title("Programme pour modifier les fichiers");
+        let mut picker = rfd::FileDialog::new().set_title(tr!("Programme pour modifier les fichiers"));
         if cfg!(windows) {
-            picker = picker.add_filter("Programmes", &["exe", "cmd", "bat"]);
+            picker = picker.add_filter(tr!("Programmes"), &["exe", "cmd", "bat"]);
         }
         if let Some(program) = picker.pick_file() {
             form.program = program.display().to_string();
@@ -700,7 +700,7 @@ impl App {
         };
         if crate::ui::editor::is_dirty(tab) {
             let name = tab.session.path.name().to_owned();
-            return self.toast(now, format!("Enregistrez d'abord les modifications de « {name} » (Ctrl+S)."), true);
+            return self.toast(now, tr!("Enregistrez d'abord les modifications de « {name} » (Ctrl+S).", name), true);
         }
         let Some(source) = Source::of_tab(tab) else {
             return;

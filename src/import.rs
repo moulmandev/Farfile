@@ -21,7 +21,7 @@ impl Source {
     pub fn label(self) -> &'static str {
         match self {
             Self::FileZilla => "FileZilla",
-            Self::FileZillaRecent => "FileZilla — serveurs récents",
+            Self::FileZillaRecent => tr!("FileZilla — serveurs récents"),
             Self::WindowsTerminal => "Windows Terminal",
             Self::SshConfig => "~/.ssh/config",
         }
@@ -211,9 +211,11 @@ fn filezilla_server(node: roxmltree::Node<'_, '_>, source: Source, group: &str) 
         "6" => (Protocol::Ftp, false),
         "0" => {
             note = Some(
-                "FileZilla chiffrait cette session quand le serveur le permettait ; \
-                 elle est importée sans chiffrement"
-                    .to_owned(),
+                tr!(
+                    "FileZilla chiffrait cette session quand le serveur le permettait ; \
+                     elle est importée sans chiffrement"
+                )
+                .to_owned(),
             );
             (Protocol::Ftp, false)
         }
@@ -253,7 +255,7 @@ fn filezilla_server(node: roxmltree::Node<'_, '_>, source: Source, group: &str) 
             }
             // Protected by FileZilla's master password: unreadable here.
             Some(_) => {
-                note = Some("mot de passe protégé par FileZilla : à saisir à nouveau".to_owned());
+                note = Some(tr!("mot de passe protégé par FileZilla : à saisir à nouveau").to_owned());
             }
             None if !stored.is_empty() => secret = Some(stored.to_owned()),
             None => {}
@@ -506,11 +508,13 @@ fn ssh_candidate(source: Source, name: &str, target: SshTarget) -> Candidate {
         },
         secret: None,
         note: match &target.proxy_jump {
-            Some(hops) => Some(format!(
-                "passe par « {} » : relié à ce rebond s'il est importé aussi ou déjà enregistré",
-                hops.split(',').map(str::trim).collect::<Vec<_>>().join(" » puis « ")
+            Some(hops) => Some(tr!(
+                "passe par « {hops} » : relié à ce rebond s'il est importé aussi ou déjà enregistré",
+                // Between two hops, closing the quotes of one and opening
+                // those of the next.
+                hops = hops.split(',').map(str::trim).collect::<Vec<_>>().join(tr!(" » puis « "))
             )),
-            None if target.jump => Some("passe par une ProxyCommand, ce qui n'est pas pris en charge".to_owned()),
+            None if target.jump => Some(tr!("passe par une ProxyCommand, ce qui n'est pas pris en charge").to_owned()),
             None => None,
         },
         jump: target.proxy_jump,

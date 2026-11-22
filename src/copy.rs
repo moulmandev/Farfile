@@ -72,23 +72,23 @@ pub fn place_label(storage: &Arc<dyn Storage>, title: &str, path: &RemotePath) -
 /// Why this copy cannot be done, if it cannot.
 pub fn refusal(source: &Source, dest: &Destination) -> Option<String> {
     if source.items.is_empty() {
-        return Some("Rien à copier.".to_owned());
+        return Some(tr!("Rien à copier.").to_owned());
     }
     if dest.storage.has_buckets() && dest.folder.is_root() {
-        return Some("Ouvrez d'abord un dossier dans l'autre vue pour y copier.".to_owned());
+        return Some(tr!("Ouvrez d'abord un dossier dans l'autre vue pour y copier.").to_owned());
     }
     if storage_key(&source.storage) != storage_key(&dest.storage) {
         return None;
     }
     let target = parts(&*dest.storage, &dest.folder)?;
     if parts(&*source.storage, &source.folder).as_ref() == Some(&target) {
-        return Some("Ces éléments sont déjà dans ce dossier.".to_owned());
+        return Some(tr!("Ces éléments sont déjà dans ce dossier.").to_owned());
     }
     source.items.iter().filter(|item| item.is_dir).find_map(|item| {
         let folder = parts(&*source.storage, &source.folder.child(&item.name))?;
         target
             .starts_with(&folder)
-            .then(|| format!("« {} » ne peut pas être copié dans lui-même.", item.name))
+            .then(|| tr!("« {name} » ne peut pas être copié dans lui-même.", name = item.name))
     })
 }
 
@@ -110,16 +110,18 @@ pub fn summary(source: &Source, dest: &Destination) -> String {
     let folders = source.items.iter().filter(|item| item.is_dir).count();
     let place = dest.label();
     match (source.items.as_slice(), folders) {
-        ([only], 0) => format!("« {} » sera copié dans {place}.", only.name),
-        ([only], _) => format!("Le dossier « {} » et tout son contenu seront copiés dans {place}.", only.name),
+        ([only], 0) => tr!("« {name} » sera copié dans {place}.", name = only.name, place),
+        ([only], _) => tr!("Le dossier « {name} » et tout son contenu seront copiés dans {place}.", name = only.name, place),
         (many, 0) => {
             let size: u64 = many.iter().map(|item| item.size).sum();
-            format!("{} éléments ({}) seront copiés dans {place}.", many.len(), format::size(size))
+            tr!("{count} éléments ({size}) seront copiés dans {place}.", count = many.len(), size = format::size(size), place)
         }
-        (many, _) => format!(
-            "{} éléments, dont {}, seront copiés dans {place}.",
-            many.len(),
-            format::count(folders, "dossier", "dossiers"),
+        (many, _) => trn!(
+            folders,
+            "{count} éléments, dont {n} dossier, seront copiés dans {place}.",
+            "{count} éléments, dont {n} dossiers, seront copiés dans {place}.",
+            count = many.len(),
+            place,
         ),
     }
 }
@@ -154,17 +156,19 @@ async fn plan(jobs: &Jobs, source: Source, dest: Destination) {
         let found = match crate::storage::walk_all(&*source.storage, &from).await {
             Ok(found) => found,
             Err(error) => {
-                jobs.notice(format!("Impossible de lister « {} » : {error:#}", item.name), true);
+                let error = format!("{error:#}");
+                jobs.notice(tr!("Impossible de lister « {name} » : {error}", name = item.name, error), true);
                 continue;
             }
         };
         let tree = Tree::of(found);
         if tree.unreadable > 0 {
             jobs.notice(
-                format!(
-                    "« {} » : {} laissé(s) de côté",
-                    item.name,
-                    format::count(tree.unreadable, "dossier illisible", "dossiers illisibles")
+                trn!(
+                    tree.unreadable,
+                    "« {name} » : {n} dossier illisible laissé(s) de côté",
+                    "« {name} » : {n} dossiers illisibles laissé(s) de côté",
+                    name = item.name,
                 ),
                 true,
             );
@@ -172,7 +176,10 @@ async fn plan(jobs: &Jobs, source: Source, dest: Destination) {
         if tree.files.is_empty() && tree.empty.is_empty() {
             match dest.storage.create_folder(&to).await {
                 Ok(()) => jobs.changed(&dest.storage, dest.folder.clone()),
-                Err(error) => jobs.notice(format!("Création de « {} » impossible : {error:#}", item.name), true),
+                Err(error) => {
+                    let error = format!("{error:#}");
+                    jobs.notice(tr!("Création de « {name} » impossible : {error}", name = item.name, error), true)
+                }
             }
             continue;
         }

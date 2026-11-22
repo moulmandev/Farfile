@@ -125,9 +125,9 @@ impl ImportForm {
                     {
                         refile = Some(profile.id.clone());
                     }
-                    Some("déjà enregistrée")
+                    Some(tr_key!("déjà enregistrée"))
                 } else if !listed.insert(key) {
-                    Some("en double")
+                    Some(tr_key!("en double"))
                 } else {
                     None
                 };
@@ -203,6 +203,8 @@ pub enum Dialog {
     Editor(super::editor::EditorDialog),
     /// A newer Farfile, to install.
     Update(super::update::UpdateDialog),
+    /// The servers to watch, and the preferences of the monitoring.
+    Monitor(super::monitor::MonitorDialog),
 }
 
 impl Dialog {
@@ -260,9 +262,9 @@ pub fn show(ctx: &egui::Context, p: &Palette, dialog: &mut Dialog, first_frame: 
         Dialog::DeleteProfile { title, .. } => confirm(
             ui,
             p,
-            "Supprimer la connexion ?",
-            &format!("« {title} » sera retirée de la liste. Vos fichiers ne sont pas touchés."),
-            "Supprimer",
+            tr!("Supprimer la connexion ?"),
+            &tr!("« {title} » sera retirée de la liste. Vos fichiers ne sont pas touchés.", title),
+            tr!("Supprimer"),
             &mut outcome,
         ),
         Dialog::Folder(form) => folder_form(ui, p, form, first_frame, &mut outcome),
@@ -273,17 +275,17 @@ pub fn show(ctx: &egui::Context, p: &Palette, dialog: &mut Dialog, first_frame: 
         } => confirm(
             ui,
             p,
-            "Supprimer le dossier ?",
+            tr!("Supprimer le dossier ?"),
             &delete_folder_text(name, *count, *subfolders),
-            "Supprimer le dossier",
+            tr!("Supprimer le dossier"),
             &mut outcome,
         ),
         Dialog::DeleteItems { summary, .. } => confirm(
             ui,
             p,
-            "Supprimer définitivement ?",
-            &format!("{summary}\nCette action est irréversible."),
-            "Supprimer",
+            tr!("Supprimer définitivement ?"),
+            &format!("{summary}\n{}", tr!("Cette action est irréversible.")),
+            tr!("Supprimer"),
             &mut outcome,
         ),
         Dialog::NewFolder { name } => new_folder(ui, p, name, first_frame, &mut outcome),
@@ -294,30 +296,28 @@ pub fn show(ctx: &egui::Context, p: &Palette, dialog: &mut Dialog, first_frame: 
         Dialog::OpenLarge { name, size, .. } => ask(
             ui,
             p,
-            "Ouvrir ce gros fichier ?",
-            &format!(
-                "« {name} » pèse {}. Il sera téléchargé en entier dans un dossier temporaire avant de s'ouvrir.",
-                format::size(*size)
+            tr!("Ouvrir ce gros fichier ?"),
+            &tr!(
+                "« {name} » pèse {size}. Il sera téléchargé en entier dans un dossier temporaire avant de s'ouvrir.",
+                name,
+                size = format::size(*size)
             ),
-            "Ouvrir",
+            tr!("Ouvrir"),
             false,
             &mut outcome,
         ),
         Dialog::Quit { unsent } => ask(
             ui,
             p,
-            "Quitter sans envoyer ?",
-            &if *unsent > 1 {
-                format!(
-                    "{unsent} fichiers modifiés n'ont pas été renvoyés au serveur.\n\
-                     Leurs copies locales seront conservées une semaine."
-                )
-            } else {
+            tr!("Quitter sans envoyer ?"),
+            &trn!(
+                *unsent,
                 "Un fichier modifié n'a pas été renvoyé au serveur.\n\
-                 Sa copie locale sera conservée une semaine."
-                    .to_owned()
-            },
-            "Quitter",
+                 Sa copie locale sera conservée une semaine.",
+                "{n} fichiers modifiés n'ont pas été renvoyés au serveur.\n\
+                 Leurs copies locales seront conservées une semaine."
+            ),
+            tr!("Quitter"),
             true,
             &mut outcome,
         ),
@@ -332,6 +332,7 @@ pub fn show(ctx: &egui::Context, p: &Palette, dialog: &mut Dialog, first_frame: 
         Dialog::Transfers(dialog) => crate::ui::transfer_dialogs::show(ui, p, dialog, &mut outcome),
         Dialog::Editor(dialog) => super::editor::dialog(ui, p, dialog, first_frame, &mut outcome),
         Dialog::Update(dialog) => super::update::dialog(ui, p, dialog, &mut outcome),
+        Dialog::Monitor(dialog) => super::monitor::dialog(ui, p, dialog, first_frame, &mut outcome),
     });
 
     if sizing || dialog.shape() != shape {
@@ -370,15 +371,15 @@ fn host_and_port(ui: &mut Ui, p: &Palette, host: &mut String, port: &mut String,
         field_of_width(
             ui,
             p,
-            "Serveur",
-            TextEdit::singleline(host).hint_text("exemple.fr ou 203.0.113.10"),
+            tr!("Serveur"),
+            TextEdit::singleline(host).hint_text(tr!("exemple.fr ou 203.0.113.10")),
             FIELD_WIDTH - PORT_WIDTH - ui.spacing().item_spacing.x,
             false,
         );
         field_of_width(
             ui,
             p,
-            "Port",
+            tr!("Port"),
             TextEdit::singleline(port).hint_text(default_port.to_string()),
             PORT_WIDTH,
             false,
@@ -405,28 +406,28 @@ fn name_and_folder(
         field_of_width(
             ui,
             p,
-            "Nom",
-            TextEdit::singleline(name).hint_text("Mon serveur"),
+            tr!("Nom"),
+            TextEdit::singleline(name).hint_text(tr!("Mon serveur")),
             FIELD_WIDTH - FOLDER_WIDTH - gap,
             focus,
         );
         ui.vertical(|ui| {
-            ui.label(small(p, "Dossier (facultatif)"));
+            ui.label(small(p, tr!("Dossier (facultatif)")));
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let picking = !folders.is_empty();
                 let width = if picking { FOLDER_WIDTH - PICK_WIDTH - 2.0 } else { FOLDER_WIDTH };
                 ui.add(
                     TextEdit::singleline(folder)
-                        .hint_text("Aucun")
+                        .hint_text(tr!("Aucun"))
                         .desired_width(width)
                         .margin(egui::Margin::symmetric(10, 7)),
                 );
                 if picking {
-                    let pick = icon_button(ui, p, icon::CARET_DOWN, "Choisir un dossier existant", true);
+                    let pick = icon_button(ui, p, icon::CARET_DOWN, tr!("Choisir un dossier existant"), true);
                     Popup::menu(&pick).show(|ui| {
                         ui.set_min_width(FOLDER_WIDTH);
-                        if ui.button(RichText::new("Aucun").color(p.muted)).clicked() {
+                        if ui.button(RichText::new(tr!("Aucun")).color(p.muted)).clicked() {
                             folder.clear();
                             ui.close();
                         }
@@ -450,9 +451,9 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
         ui,
         p,
         if form.is_new {
-            "Nouvelle connexion"
+            tr!("Nouvelle connexion")
         } else {
-            "Modifier la connexion"
+            tr!("Modifier la connexion")
         },
     );
 
@@ -473,7 +474,7 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
     ui.add_space(8.0);
 
     let is_new = form.is_new;
-    let keep_hint = |otherwise: &'static str| if is_new { otherwise } else { "Laisser vide pour ne pas changer" };
+    let keep_hint = |otherwise: &'static str| if is_new { otherwise } else { tr!("Laisser vide pour ne pas changer") };
     let draft = &mut form.draft;
     name_and_folder(ui, p, &mut draft.name, &mut draft.folder, &form.folders, first_frame);
     super::hosts::form_section(ui, p, draft, &mut form.hosts);
@@ -483,23 +484,23 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
             field(
                 ui,
                 p,
-                "Serveur (endpoint)",
+                tr!("Serveur (endpoint)"),
                 TextEdit::singleline(&mut draft.endpoint)
-                    .hint_text("s3.eu-west-2.wasabisys.com — vide pour Amazon S3"),
+                    .hint_text(tr!("s3.eu-west-2.wasabisys.com — vide pour Amazon S3")),
                 false,
             );
             field(
                 ui,
                 p,
-                "Région",
-                TextEdit::singleline(&mut draft.region).hint_text("Automatique"),
+                tr!("Région"),
+                TextEdit::singleline(&mut draft.region).hint_text(trc!("région", "Automatique")),
                 false,
             );
-            field(ui, p, "Clé d'accès", TextEdit::singleline(&mut draft.user), false);
+            field(ui, p, tr!("Clé d'accès"), TextEdit::singleline(&mut draft.user), false);
             field(
                 ui,
                 p,
-                "Clé secrète",
+                tr!("Clé secrète"),
                 TextEdit::singleline(&mut form.secret)
                     .password(true)
                     .hint_text(keep_hint("")),
@@ -508,15 +509,14 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
             field(
                 ui,
                 p,
-                "Dossier de départ (facultatif)",
-                TextEdit::singleline(&mut draft.initial_path).hint_text("/mon-bucket/dossier"),
+                tr!("Dossier de départ (facultatif)"),
+                TextEdit::singleline(&mut draft.initial_path).hint_text(tr!("/mon-bucket/dossier")),
                 false,
             );
-            checkbox(ui, p, &mut draft.path_style, "Adressage « path-style »")
-                .on_hover_text(
-                    "Recommandé pour la plupart des fournisseurs compatibles S3,\n\
-                     et indispensable pour les buckets dont le nom contient des points.",
-                );
+            checkbox(ui, p, &mut draft.path_style, tr!("Adressage « path-style »")).on_hover_text(tr!(
+                "Recommandé pour la plupart des fournisseurs compatibles S3,\n\
+                 et indispensable pour les buckets dont le nom contient des points."
+            ));
         }
         Protocol::Sftp => {
             host_and_port(ui, p, &mut draft.endpoint, &mut form.port, Protocol::Sftp.default_port());
@@ -531,14 +531,14 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
             field(
                 ui,
                 p,
-                "Utilisateur",
-                TextEdit::singleline(&mut draft.user).hint_text("Vide pour une session anonyme"),
+                tr!("Utilisateur"),
+                TextEdit::singleline(&mut draft.user).hint_text(tr!("Vide pour une session anonyme")),
                 false,
             );
             field(
                 ui,
                 p,
-                "Mot de passe",
+                tr!("Mot de passe"),
                 TextEdit::singleline(&mut form.secret)
                     .password(true)
                     .hint_text(keep_hint("")),
@@ -547,22 +547,21 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
             field(
                 ui,
                 p,
-                "Dossier de départ (facultatif)",
-                TextEdit::singleline(&mut draft.initial_path).hint_text("Dossier personnel"),
+                tr!("Dossier de départ (facultatif)"),
+                TextEdit::singleline(&mut draft.initial_path).hint_text(tr!("Dossier personnel")),
                 false,
             );
-            checkbox(ui, p, &mut draft.tls, "Chiffrer la session (FTPS explicite)")
-                .on_hover_text(
-                    "Sans chiffrement, FTP envoie le mot de passe et les fichiers en clair.\n\
-                     Le certificat du serveur doit être reconnu par le système.",
-                );
+            checkbox(ui, p, &mut draft.tls, tr!("Chiffrer la session (FTPS explicite)")).on_hover_text(tr!(
+                "Sans chiffrement, FTP envoie le mot de passe et les fichiers en clair.\n\
+                 Le certificat du serveur doit être reconnu par le système."
+            ));
         }
         // Built in, never edited here.
         Protocol::Local => {}
     }
     ui.label(small(
         p,
-        "Le secret est conservé dans le gestionnaire d'identifiants du système.",
+        tr!("Le secret est conservé dans le gestionnaire d'identifiants du système."),
     ));
 
     if let Some(error) = &form.error {
@@ -581,13 +580,13 @@ fn profile_form(ui: &mut Ui, p: &Palette, form: &mut ProfileForm, first_frame: b
         Protocol::Local => false,
     };
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Enregistrer et ouvrir", complete).clicked() {
+        if primary_button(ui, p, tr!("Enregistrer et ouvrir"), complete).clicked() {
             *outcome = Outcome::ConfirmedAndConnect;
         }
-        if ui.add_enabled(complete, egui::Button::new("Enregistrer")).clicked() {
+        if ui.add_enabled(complete, egui::Button::new(tr!("Enregistrer"))).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -597,18 +596,20 @@ const IMPORT_WIDTH: f32 = 560.0;
 
 fn import_form(ui: &mut Ui, p: &Palette, form: &mut ImportForm, outcome: &mut Outcome) {
     ui.set_width(IMPORT_WIDTH);
-    title(ui, p, "Importer des connexions");
+    title(ui, p, tr!("Importer des connexions"));
     super::hosts::vault_source(ui, p, &mut form.vault, outcome);
 
     if form.items.is_empty() {
         ui.label(muted(
             p,
-            "Aucune connexion trouvée dans FileZilla, dans les profils SSH de Windows Terminal\n\
-             ni dans ~/.ssh/config.",
+            tr!(
+                "Aucune connexion trouvée dans FileZilla, dans les profils SSH de Windows Terminal\n\
+                 ni dans ~/.ssh/config."
+            ),
         ));
         ui.add_space(14.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button("Fermer").clicked() {
+            if ui.button(tr!("Fermer")).clicked() {
                 *outcome = Outcome::Cancelled;
             }
         });
@@ -619,11 +620,7 @@ fn import_form(ui: &mut Ui, p: &Palette, form: &mut ImportForm, outcome: &mut Ou
     ui.horizontal(|ui| {
         ui.label(muted(
             p,
-            format!(
-                "{} trouvées · {} sélectionnées",
-                form.items.len(),
-                selected
-            ),
+            tr!("{found} trouvées · {selected} sélectionnées", found = form.items.len(), selected),
         ));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let link = |ui: &mut Ui, text: &str| {
@@ -631,10 +628,10 @@ fn import_form(ui: &mut Ui, p: &Palette, form: &mut ImportForm, outcome: &mut Ou
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
             };
-            if link(ui, "Tout décocher") {
+            if link(ui, tr!("Tout décocher")) {
                 form.items.iter_mut().for_each(|item| item.selected = false);
             }
-            if link(ui, "Tout cocher") {
+            if link(ui, tr!("Tout cocher")) {
                 form.items.iter_mut().for_each(|item| item.selected = true);
             }
         });
@@ -665,36 +662,38 @@ fn import_form(ui: &mut Ui, p: &Palette, form: &mut ImportForm, outcome: &mut Ou
     ui.add_space(10.0);
     let refilable = form.refilable();
     if refilable > 0 {
-        let label = if refilable > 1 {
-            format!("Ranger aussi {refilable} connexions déjà enregistrées dans leur dossier d'origine")
-        } else {
-            "Ranger aussi 1 connexion déjà enregistrée dans son dossier d'origine".to_owned()
-        };
-        checkbox(ui, p, &mut form.apply_folders, label).on_hover_text(
-            "Les connexions importées avant l'arrivée des dossiers retrouvent\n\
-             celui qu'elles ont dans FileZilla. Celles déjà rangées ne bougent pas.",
+        let label = trn!(
+            refilable,
+            "Ranger aussi {n} connexion déjà enregistrée dans son dossier d'origine",
+            "Ranger aussi {n} connexions déjà enregistrées dans leur dossier d'origine"
         );
+        checkbox(ui, p, &mut form.apply_folders, label).on_hover_text(tr!(
+            "Les connexions importées avant l'arrivée des dossiers retrouvent\n\
+             celui qu'elles ont dans FileZilla. Celles déjà rangées ne bougent pas."
+        ));
         ui.add_space(6.0);
     }
     ui.label(small(
         p,
-        "Les mots de passe importés sont rangés dans le gestionnaire d'identifiants du système.\n\
-         Rien n'est modifié dans les applications d'origine.",
+        tr!(
+            "Les mots de passe importés sont rangés dans le gestionnaire d'identifiants du système.\n\
+             Rien n'est modifié dans les applications d'origine."
+        ),
     ));
     ui.add_space(10.0);
     let refiling = form.apply_folders && refilable > 0;
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         let label = if selected > 1 {
-            format!("Importer {selected} connexions")
+            tr!("Importer {selected} connexions", selected)
         } else if selected == 0 && refiling {
-            "Ranger".to_owned()
+            tr!("Ranger").to_owned()
         } else {
-            "Importer".to_owned()
+            tr!("Importer").to_owned()
         };
         if primary_button(ui, p, &label, selected > 0 || refiling).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -709,13 +708,13 @@ fn import_row(ui: &mut Ui, p: &Palette, item: &mut ImportItem) {
         where_to.push_str(&format!(":{}", profile.port));
     }
     if candidate.secret.is_some() {
-        where_to.push_str(" · mot de passe");
+        where_to.push_str(&format!(" · {}", tr!("mot de passe")));
     } else if !profile.key_path.is_empty() {
         let key = profile.key_path.rsplit(['/', '\\']).next().unwrap_or("");
-        where_to.push_str(&format!(" · clé {key}"));
+        where_to.push_str(&format!(" · {}", tr!("clé {key}", key)));
     }
     if let Some(reason) = item.duplicate {
-        where_to.push_str(&format!(" · {reason}"));
+        where_to.push_str(&format!(" · {}", crate::i18n::lookup(reason)));
     }
 
     ui.horizontal(|ui| {
@@ -775,7 +774,7 @@ fn ask(
         if confirmed {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -783,26 +782,28 @@ fn ask(
 
 fn push_edit(ui: &mut Ui, p: &Palette, name: &str, target: &str, always: &mut bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH + 40.0);
-    title(ui, p, "Envoyer les modifications ?");
-    ui.add(Label::new(RichText::new(format!("« {name} » vient d'être enregistré.")).color(p.text)).wrap());
+    title(ui, p, tr!("Envoyer les modifications ?"));
+    ui.add(Label::new(RichText::new(tr!("« {name} » vient d'être enregistré.", name)).color(p.text)).wrap());
     ui.add_space(2.0);
     ui.horizontal(|ui| {
         ui.label(RichText::new(icon::ARROW_BEND_DOWN_RIGHT).color(p.faint));
         ui.add(Label::new(muted(p, target)).truncate());
     });
     ui.add_space(10.0);
-    checkbox(ui, p, always, "Envoyer les prochains enregistrements sans demander");
+    checkbox(ui, p, always, tr!("Envoyer les prochains enregistrements sans demander"));
     ui.add_space(12.0);
     if ui.input(|input| input.key_pressed(Key::Enter)) {
         *outcome = Outcome::Confirmed;
     }
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, &format!("{}  Envoyer", icon::UPLOAD_SIMPLE), true).clicked() {
+        if primary_button(ui, p, &format!("{}  {}", icon::UPLOAD_SIMPLE, tr!("Envoyer")), true).clicked() {
             *outcome = Outcome::Confirmed;
         }
         if ui
-            .button("Plus tard")
-            .on_hover_text("Les modifications restent sur cet ordinateur ; le bouton en bas de la fenêtre permet de les envoyer.")
+            .button(tr!("Plus tard"))
+            .on_hover_text(tr!(
+                "Les modifications restent sur cet ordinateur ; le bouton en bas de la fenêtre permet de les envoyer."
+            ))
             .clicked()
         {
             *outcome = Outcome::Cancelled;
@@ -814,63 +815,73 @@ fn push_edit(ui: &mut Ui, p: &Palette, name: &str, target: &str, always: &mut bo
 fn delete_folder_text(path: &str, count: usize, subfolders: usize) -> String {
     let name = profiles::folder_name(path);
     let parent = profiles::folder_parent(path);
-    let mut text = match subfolders {
-        0 => format!("« {name} » sera retiré de la liste."),
-        1 => format!("« {name} » et le dossier qu'il contient seront retirés de la liste."),
-        _ => format!("« {name} » et les {subfolders} dossiers qu'il contient seront retirés de la liste."),
+    let removed = match subfolders {
+        0 => tr!("« {name} » sera retiré de la liste.", name),
+        _ => trn!(
+            subfolders,
+            "« {name} » et le dossier qu'il contient seront retirés de la liste.",
+            "« {name} » et les {n} dossiers qu'il contient seront retirés de la liste.",
+            name
+        ),
     };
-    let kept = match count {
-        0 => return text,
-        1 => "La connexion qui s'y trouve est conservée".to_owned(),
-        _ => format!("Les {count} connexions qui s'y trouvent sont conservées"),
-    };
-    let place = if parent.is_empty() {
-        "hors dossier".to_owned()
+    if count == 0 {
+        return removed;
+    }
+    let kept = if parent.is_empty() {
+        trn!(
+            count,
+            "La connexion qui s'y trouve est conservée, hors dossier.",
+            "Les {n} connexions qui s'y trouvent sont conservées, hors dossier."
+        )
     } else {
-        format!("dans « {} »", profiles::folder_name(&parent))
+        trn!(
+            count,
+            "La connexion qui s'y trouve est conservée, dans « {parent} ».",
+            "Les {n} connexions qui s'y trouvent sont conservées, dans « {parent} ».",
+            parent = profiles::folder_name(&parent)
+        )
     };
-    text.push_str(&format!(" {kept}, {place}."));
-    text
+    format!("{removed} {kept}")
 }
 
 fn folder_form(ui: &mut Ui, p: &Palette, form: &mut FolderForm, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH);
     let renaming = form.renaming.is_some();
     let heading = if renaming {
-        "Renommer le dossier"
+        tr!("Renommer le dossier")
     } else if form.parent.is_empty() {
-        "Nouveau dossier"
+        tr!("Nouveau dossier")
     } else {
-        "Nouveau sous-dossier"
+        tr!("Nouveau sous-dossier")
     };
     title(ui, p, heading);
     if !form.parent.is_empty() {
-        ui.label(small(p, format!("{}  Dans {}", icon::FOLDER, form.parent)));
+        ui.label(small(p, format!("{}  {}", icon::FOLDER, tr!("Dans {folder}", folder = form.parent))));
         ui.add_space(4.0);
     }
     field(
         ui,
         p,
-        "Nom du dossier",
-        TextEdit::singleline(&mut form.name).hint_text("Production, Clients, Jeux…"),
+        tr!("Nom du dossier"),
+        TextEdit::singleline(&mut form.name).hint_text(tr!("Production, Clients, Jeux…")),
         first_frame,
     );
 
     let valid = form.path().is_some();
     if !valid && !form.name.trim().is_empty() {
-        ui.label(RichText::new("Un dossier porte déjà ce nom.").size(12.0).color(p.danger));
+        ui.label(RichText::new(tr!("Un dossier porte déjà ce nom.")).size(12.0).color(p.danger));
     } else if form.profile.is_some() {
-        ui.label(small(p, "La connexion y sera rangée."));
+        ui.label(small(p, tr!("La connexion y sera rangée.")));
     }
     if valid && ui.input(|input| input.key_pressed(Key::Enter)) {
         *outcome = Outcome::Confirmed;
     }
     ui.add_space(8.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, if renaming { "Renommer" } else { "Créer" }, valid).clicked() {
+        if primary_button(ui, p, if renaming { tr!("Renommer") } else { tr!("Créer") }, valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -878,24 +889,24 @@ fn folder_form(ui: &mut Ui, p: &Palette, form: &mut FolderForm, first_frame: boo
 
 fn rename_tab(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH);
-    title(ui, p, "Renommer l'onglet");
+    title(ui, p, tr!("Renommer l'onglet"));
     field(
         ui,
         p,
-        "Nom de l'onglet",
-        TextEdit::singleline(name).hint_text("Vide pour reprendre le nom de la connexion"),
+        tr!("Nom de l'onglet"),
+        TextEdit::singleline(name).hint_text(tr!("Vide pour reprendre le nom de la connexion")),
         first_frame,
     );
-    ui.label(small(p, "Seul cet onglet change de nom, pas la connexion."));
+    ui.label(small(p, tr!("Seul cet onglet change de nom, pas la connexion.")));
     if ui.input(|input| input.key_pressed(Key::Enter)) {
         *outcome = Outcome::Confirmed;
     }
     ui.add_space(8.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Renommer", true).clicked() {
+        if primary_button(ui, p, tr!("Renommer"), true).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });
@@ -903,11 +914,11 @@ fn rename_tab(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: bool, ou
 
 fn new_folder(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: bool, outcome: &mut Outcome) {
     ui.set_width(FIELD_WIDTH);
-    title(ui, p, "Nouveau dossier");
+    title(ui, p, tr!("Nouveau dossier"));
     field(
         ui,
         p,
-        "Nom du dossier",
+        tr!("Nom du dossier"),
         TextEdit::singleline(name),
         first_frame,
     );
@@ -918,10 +929,10 @@ fn new_folder(ui: &mut Ui, p: &Palette, name: &mut String, first_frame: bool, ou
     }
     ui.add_space(8.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        if primary_button(ui, p, "Créer", valid).clicked() {
+        if primary_button(ui, p, tr!("Créer"), valid).clicked() {
             *outcome = Outcome::Confirmed;
         }
-        if ui.button("Annuler").clicked() {
+        if ui.button(tr!("Annuler")).clicked() {
             *outcome = Outcome::Cancelled;
         }
     });

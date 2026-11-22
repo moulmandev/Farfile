@@ -1,6 +1,6 @@
 [package]
 name = "s3viewer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Files on S3, SFTP and FTP, and SSH terminals, in tabs: a fast native app written in Rust"
 license = "MIT"
@@ -59,18 +59,28 @@ unicode-width = "0.2.3"
 ureq = { version = "3.5.1", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
 vt100 = "0.18.1"
 zeroize = "1.9.2"
+sys-locale = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
+    # The icon in the notification area (see `src/monitor/tray.rs`).
+    "Win32_Graphics_Gdi",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    # Naming Farfile to the notifications of Windows (`src/monitor/notify.rs`).
+    "Win32_System_Registry",
     "Win32_System_WindowsProgramming",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
-# Dragging files out to Explorer (see `src/os_drag/win.rs`).
+# Dragging files out to Explorer (see `src/os_drag/win.rs`), and the
+# notifications of the monitoring (`src/monitor/notify.rs`).
 windows = { version = "0.62", features = [
+    "Data_Xml_Dom",
+    "Foundation",
+    "UI_Notifications",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
@@ -87,6 +97,9 @@ windows = { version = "0.62", features = [
 ] }
 # `#[implement]` expects it by name.
 windows-core = "0.62"
+# The window's own handle, to hide it in the notification area and flash
+# its taskbar button. Already in the build, through eframe.
+raw-window-handle = "0.6"
 
 [build-dependencies]
 # The executable's icon and version details on Windows (see build.rs).

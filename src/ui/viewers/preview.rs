@@ -91,21 +91,21 @@ fn header(ui: &mut Ui, p: &Palette, preview: &mut Preview, editor: &str, actions
     ui.horizontal(|ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            close = icon_button(ui, p, icon::X, "Fermer (Espace ou Échap)", true).clicked();
+            close = icon_button(ui, p, icon::X, tr!("Fermer (Espace ou Échap)"), true).clicked();
             let item = Item {
                 path: preview.path.clone(),
                 is_dir: false,
                 size: preview.entry.size.unwrap_or(0),
             };
-            if icon_button(ui, p, icon::DOWNLOAD_SIMPLE, "Télécharger…", true).clicked() {
+            if icon_button(ui, p, icon::DOWNLOAD_SIMPLE, tr!("Télécharger…"), true).clicked() {
                 push(actions, ViewerAction::Download(vec![item]));
             }
-            let edit = format!("Modifier dans {editor}");
+            let edit = tr!("Modifier dans {editor}", editor);
             if icon_button(ui, p, icon::PENCIL_SIMPLE, &edit, true).clicked() {
                 push(actions, ViewerAction::Open { path: preview.path.clone(), how: Launch::Editor });
             }
             if launch::kind(preview.name()) == launch::Kind::Document
-                && icon_button(ui, p, icon::ARROW_SQUARE_OUT, "Ouvrir avec le programme associé", true).clicked()
+                && icon_button(ui, p, icon::ARROW_SQUARE_OUT, tr!("Ouvrir avec le programme associé"), true).clicked()
             {
                 push(actions, ViewerAction::Open { path: preview.path.clone(), how: Launch::Default });
             }
@@ -138,7 +138,7 @@ fn details(preview: &Preview) -> String {
     match &preview.body {
         Body::Text(text) if !preview.hex => parts.push(text.encoding().label().to_owned()),
         Body::Image(image) => parts.push(image.format.to_owned()),
-        Body::Text(_) | Body::Hex => parts.push("Hexadécimal".to_owned()),
+        Body::Text(_) | Body::Hex => parts.push(tr!("Hexadécimal").to_owned()),
         _ => {}
     }
     parts.join(" · ")
@@ -152,35 +152,35 @@ fn toggles(ui: &mut Ui, p: &Palette, preview: &mut Preview) {
     };
     match &mut preview.body {
         Body::Image(_) => {
-            if toggle(ui, preview.actual_size, "1:1", "Taille réelle") {
+            if toggle(ui, preview.actual_size, "1:1", tr!("Taille réelle")) {
                 preview.actual_size = !preview.actual_size;
             }
         }
         Body::Text(text) => {
             if !preview.hex {
-                if icon_button(ui, p, icon::COPY_SIMPLE, "Copier le texte chargé", true).clicked() {
+                if icon_button(ui, p, icon::COPY_SIMPLE, tr!("Copier le texte chargé"), true).clicked() {
                     let shown = text.shown(preview.pretty && text.json).text().to_owned();
                     ui.ctx().copy_text(shown);
                 }
                 let json = format!("{}  JSON", icon::BRACKETS_CURLY);
-                if text.json && toggle(ui, preview.pretty, &json, "Mettre en forme") {
+                if text.json && toggle(ui, preview.pretty, &json, tr!("Mettre en forme")) {
                     preview.pretty = !preview.pretty;
                 }
-                if toggle(ui, preview.wrap, icon::ARROW_U_DOWN_LEFT, "Retour à la ligne") {
+                if toggle(ui, preview.wrap, icon::ARROW_U_DOWN_LEFT, tr!("Retour à la ligne")) {
                     preview.wrap = !preview.wrap;
                 }
                 ui.add_space(6.0);
             }
-            if toggle(ui, preview.hex, "Hex", "Afficher les octets") {
+            if toggle(ui, preview.hex, "Hex", tr!("Afficher les octets")) {
                 preview.hex = true;
             }
-            if toggle(ui, !preview.hex, "Texte", "Afficher le texte") {
+            if toggle(ui, !preview.hex, tr!("Texte"), tr!("Afficher le texte")) {
                 preview.hex = false;
             }
         }
         Body::Hex => {
             ui.add(Button::selectable(true, RichText::new("Hex").size(13.0)));
-            if toggle(ui, false, "Texte", "Lire ces octets comme du texte") {
+            if toggle(ui, false, tr!("Texte"), tr!("Lire ces octets comme du texte")) {
                 preview.force_text();
             }
         }
@@ -196,16 +196,16 @@ fn body(ui: &mut Ui, p: &Palette, preview: &mut Preview, id: Id) {
                 ui.add_space((ui.available_height() * 0.38).max(12.0));
                 ui.add(egui::Spinner::new().size(26.0).color(p.accent));
                 ui.add_space(6.0);
-                ui.label(muted(p, "Lecture…"));
+                ui.label(muted(p, tr!("Lecture…")));
             });
         }
         Body::Failed(error) => {
-            placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, "Aperçu impossible", "");
+            placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, tr!("Aperçu impossible"), "");
             ui.vertical_centered(|ui| ui.add(Label::new(muted(p, error.as_str())).wrap()));
         }
         Body::Image(image) => image_view(ui, p, image, preview.actual_size),
         Body::Text(text) if !preview.hex && text.doc.len() == 0 && complete => {
-            placeholder(ui, p, icon::FILE, p.faint, "Fichier vide", "");
+            placeholder(ui, p, icon::FILE, p.faint, tr!("Fichier vide"), "");
         }
         Body::Text(text) if !preview.hex => {
             let pretty = preview.pretty && text.json;
@@ -238,21 +238,22 @@ fn footer(ui: &mut Ui, p: &Palette, preview: &mut Preview, position: Option<(usi
             Body::Text(_) | Body::Hex => {
                 match preview.size {
                     Some(size) if loaded < size => {
-                        ui.label(small(p, format!("{} affichés sur {}", format::size(loaded), format::size(size))));
+                        let shown = tr!("{shown} affichés sur {total}", shown = format::size(loaded), total = format::size(size));
+                        ui.label(small(p, shown));
                         if preview.loading() {
                             ui.add(egui::Spinner::new().size(12.0).color(p.muted));
                         } else if preview.can_load_more() {
-                            let text = RichText::new(format!("{}  Charger la suite", icon::ARROW_DOWN)).size(12.5);
+                            let text = RichText::new(format!("{}  {}", icon::ARROW_DOWN, tr!("Charger la suite"))).size(12.5);
                             let more = Button::new(text).min_size(vec2(0.0, 24.0));
-                            if ui.add(more).on_hover_text("Lire le mégaoctet suivant").clicked() {
+                            if ui.add(more).on_hover_text(tr!("Lire le mégaoctet suivant")).clicked() {
                                 preview.load_more();
                             }
                         } else {
-                            ui.label(small(p, "Modifiez ou téléchargez le fichier pour voir la suite."));
+                            ui.label(small(p, tr!("Modifiez ou téléchargez le fichier pour voir la suite.")));
                         }
                     }
                     Some(size) => {
-                        ui.label(small(p, format!("Fichier entier · {}", format::size(size))));
+                        ui.label(small(p, tr!("Fichier entier · {size}", size = format::size(size))));
                     }
                     None => {}
                 }
@@ -260,17 +261,17 @@ fn footer(ui: &mut Ui, p: &Palette, preview: &mut Preview, position: Option<(usi
                     && !preview.hex
                 {
                     let lines = text.laid_out(text.json && preview.pretty).0.line_count();
-                    ui.label(small(p, format::count(lines, "ligne", "lignes")));
+                    ui.label(small(p, trn!(lines, "{n} ligne", "{n} lignes")));
                     if text.json && preview.pretty {
                         match &text.json_error {
                             Some(error) => {
-                                ui.label(RichText::new(format!("JSON invalide ({error})")).size(12.0).color(p.danger));
+                                ui.label(RichText::new(tr!("JSON invalide ({error})", error)).size(12.0).color(p.danger));
                             }
                             None if preview.complete() => {
-                                ui.label(RichText::new("JSON valide").size(12.0).color(p.success));
+                                ui.label(RichText::new(tr!("JSON valide")).size(12.0).color(p.success));
                             }
                             None => {
-                                ui.label(small(p, "Mise en forme de la partie chargée"));
+                                ui.label(small(p, tr!("Mise en forme de la partie chargée")));
                             }
                         }
                     }
@@ -280,16 +281,16 @@ fn footer(ui: &mut Ui, p: &Palette, preview: &mut Preview, position: Option<(usi
                 let mut text = format!("{} × {} px", image.width, image.height);
                 let [shown, _] = image.texture.size();
                 if shown < image.width as usize {
-                    text.push_str(" · réduite pour l'affichage");
+                    text.push_str(&format!(" · {}", tr!("réduite pour l'affichage")));
                 }
                 ui.label(small(p, text));
             }
             Body::Loading | Body::Failed(_) => {}
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(small(p, "Espace ou Échap : fermer"));
+            ui.label(small(p, tr!("Espace ou Échap : fermer")));
             if let Some((at, count)) = position {
-                ui.label(small(p, format!("{at} / {count}  ·  ↑ ↓ : fichier précédent, suivant  ·")));
+                ui.label(small(p, tr!("{at} / {count}  ·  ↑ ↓ : fichier précédent, suivant  ·", at, count)));
             }
         });
     });

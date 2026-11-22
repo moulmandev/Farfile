@@ -30,26 +30,26 @@ impl ConflictPolicy {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Ask => "Demander",
-            Self::Overwrite => "Remplacer",
-            Self::OverwriteIfNewer => "Remplacer si plus récent",
-            Self::OverwriteIfSizeDiffers => "Remplacer si la taille diffère",
-            Self::Resume => "Reprendre",
-            Self::Rename => "Renommer",
-            Self::Skip => "Ignorer",
+            Self::Ask => tr!("Demander"),
+            Self::Overwrite => tr!("Remplacer"),
+            Self::OverwriteIfNewer => tr!("Remplacer si plus récent"),
+            Self::OverwriteIfSizeDiffers => tr!("Remplacer si la taille diffère"),
+            Self::Resume => tr!("Reprendre"),
+            Self::Rename => tr!("Renommer"),
+            Self::Skip => tr!("Ignorer"),
         }
     }
 
     /// How the rule reads when applied to every file, in the panel.
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Ask => "Une question s'affiche pour chaque fichier déjà présent.",
-            Self::Overwrite => "Le fichier présent est toujours remplacé.",
-            Self::OverwriteIfNewer => "Remplacé seulement quand l'original est plus récent.",
-            Self::OverwriteIfSizeDiffers => "Remplacé seulement quand les tailles diffèrent.",
-            Self::Resume => "Une copie incomplète est complétée, sinon remplacée.",
-            Self::Rename => "La copie reçoit un autre nom : « nom (1).ext ».",
-            Self::Skip => "Le fichier présent est laissé tel quel.",
+            Self::Ask => tr!("Une question s'affiche pour chaque fichier déjà présent."),
+            Self::Overwrite => tr!("Le fichier présent est toujours remplacé."),
+            Self::OverwriteIfNewer => tr!("Remplacé seulement quand l'original est plus récent."),
+            Self::OverwriteIfSizeDiffers => tr!("Remplacé seulement quand les tailles diffèrent."),
+            Self::Resume => tr!("Une copie incomplète est complétée, sinon remplacée."),
+            Self::Rename => tr!("La copie reçoit un autre nom : « nom (1).ext »."),
+            Self::Skip => tr!("Le fichier présent est laissé tel quel."),
         }
     }
 }

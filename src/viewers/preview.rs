@@ -172,9 +172,9 @@ impl Preview {
         };
         match preview.entry.size {
             Some(size) if image && size > MAX_IMAGE => {
-                preview.notice = Some(format!(
-                    "Image trop lourde pour l'aperçu ({}) : voici ses premiers octets.",
-                    format::size(size)
+                preview.notice = Some(tr!(
+                    "Image trop lourde pour l'aperçu ({size}) : voici ses premiers octets.",
+                    size = format::size(size)
                 ));
                 preview.fetch(0, CHUNK, false);
             }
@@ -236,7 +236,7 @@ impl Preview {
         self.task = None;
         match outcome {
             Err(error) if self.bytes.is_empty() => self.body = Body::Failed(error),
-            Err(error) => self.notice = Some(format!("Lecture de la suite impossible : {error}")),
+            Err(error) => self.notice = Some(tr!("Lecture de la suite impossible : {error}", error)),
             Ok(Fetched::Image {
                 image,
                 width,
@@ -254,7 +254,7 @@ impl Preview {
                 });
             }
             Ok(Fetched::BadImage { chunk, error }) => {
-                self.notice = Some(format!("Image illisible ({error}) : voici ses octets."));
+                self.notice = Some(tr!("Image illisible ({error}) : voici ses octets.", error));
                 self.take_bytes(chunk);
             }
             Ok(Fetched::Bytes(chunk)) => self.take_bytes(chunk),
@@ -348,7 +348,7 @@ async fn decode_image(chunk: Chunk) -> Fetched {
 }
 
 fn decode_pixels(bytes: &[u8]) -> Result<(ColorImage, u32, u32, &'static str), String> {
-    let format = image_format(bytes).ok_or_else(|| "format non reconnu".to_owned())?;
+    let format = image_format(bytes).ok_or_else(|| tr!("format non reconnu").to_owned())?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| error.to_string())?;

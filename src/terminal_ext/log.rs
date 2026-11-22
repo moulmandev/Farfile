@@ -221,9 +221,9 @@ impl Recorder {
     pub fn create(path: &Path, raw: bool, header: &str) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("impossible de créer le dossier {}", parent.display()))?;
+                .with_context(|| tr!("impossible de créer le dossier {path}", path = parent.display()))?;
         }
-        let file = File::create(path).with_context(|| format!("impossible de créer {}", path.display()))?;
+        let file = File::create(path).with_context(|| tr!("impossible de créer {path}", path = path.display()))?;
         let mut recorder = Self {
             path: path.to_owned(),
             file: BufWriter::new(file),

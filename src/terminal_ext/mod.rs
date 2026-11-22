@@ -49,7 +49,11 @@ impl Tap {
         if let Some(error) = log.error.take() {
             let path = log.path.clone();
             state.log = None;
-            state.failure = Some(format!("Enregistrement de la session interrompu ({}) : {error}", path.display()));
+            state.failure = Some(tr!(
+                "Enregistrement de la session interrompu ({path}) : {error}",
+                path = path.display(),
+                error
+            ));
         }
     }
 
@@ -83,13 +87,17 @@ impl Tap {
     }
 }
 
+/// The day and time written in session logs.
+fn log_date() -> String {
+    chrono::Local::now().format(tr!("%d/%m/%Y à %H:%M:%S")).to_string()
+}
+
 pub fn log_header(address: &str) -> String {
-    let now = chrono::Local::now();
-    format!("# Session {address} — enregistrée le {}", now.format("%d/%m/%Y à %H:%M:%S"))
+    tr!("# Session {address} — enregistrée le {date}", address, date = log_date())
 }
 
 fn log_footer() -> String {
-    format!("# Fin de l'enregistrement le {}", chrono::Local::now().format("%d/%m/%Y à %H:%M:%S"))
+    tr!("# Fin de l'enregistrement le {date}", date = log_date())
 }
 
 /// The name proposed for the log of a session: where and when.

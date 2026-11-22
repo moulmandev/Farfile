@@ -67,11 +67,11 @@ pub fn public_line(path: &Path, passphrase: Option<&str>) -> Result<String> {
     if let Ok(key) = russh_keys::load_public_key(pub_path(path)) {
         return Ok(key.to_openssh()?);
     }
-    let text = std::fs::read_to_string(path).with_context(|| format!("clé illisible ({})", path.display()))?;
+    let text = std::fs::read_to_string(path).with_context(|| tr!("clé illisible ({path})", path = path.display()))?;
     let key = public_half(path, &text)
         .map(Ok)
         .unwrap_or_else(|| russh_keys::decode_secret_key(&text, passphrase).map(|key| key.public_key().clone()))
-        .with_context(|| format!("clé illisible ({})", path.display()))?;
+        .with_context(|| tr!("clé illisible ({path})", path = path.display()))?;
     Ok(key.to_openssh()?)
 }
 
@@ -87,8 +87,8 @@ pub fn kind(line: &str) -> &'static str {
         "ssh-ed25519" => "ed25519",
         "ssh-rsa" => "rsa",
         kind if kind.starts_with("ecdsa-") => "ecdsa",
-        kind if kind.starts_with("sk-") => "clé matérielle",
-        _ => "clé",
+        kind if kind.starts_with("sk-") => tr!("clé matérielle"),
+        _ => tr!("clé"),
     }
 }
 
@@ -104,7 +104,7 @@ impl KeyType {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Ed25519 => "Ed25519 (recommandé)",
+            Self::Ed25519 => tr!("Ed25519 (recommandé)"),
             Self::Rsa4096 => "RSA 4096",
         }
     }
@@ -132,7 +132,7 @@ pub fn generate(kind: KeyType, passphrase: &str, comment: &str, path: &Path) -> 
     let public_path = pub_path(path);
     for existing in [path, public_path.as_path()] {
         if existing.exists() {
-            bail!("{} existe déjà : choisissez un autre nom", existing.display());
+            bail!(tr!("{path} existe déjà : choisissez un autre nom", path = existing.display()));
         }
     }
     let mut rng = rand::rng();
@@ -150,7 +150,7 @@ pub fn generate(kind: KeyType, passphrase: &str, comment: &str, path: &Path) -> 
     let private = key.to_openssh(LineEnding::LF)?;
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("création de {} impossible", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| tr!("création de {path} impossible", path = parent.display()))?;
     }
     write_new(path, private.as_bytes())?;
     if let Err(error) = write_new(&public_path, format!("{public}\n").as_bytes()) {
@@ -176,7 +176,7 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     }
     let mut file = options
         .open(path)
-        .with_context(|| format!("écriture de {} impossible", path.display()))?;
+        .with_context(|| tr!("écriture de {path} impossible", path = path.display()))?;
     file.write_all(bytes)?;
     Ok(())
 }
@@ -226,17 +226,17 @@ pub enum Installed {
 /// appended to, so a failure cannot lose the keys already there.
 pub async fn install(settings: &SshSettings, line: &str) -> Result<Installed> {
     if key_of(line).is_none() {
-        bail!("ce n'est pas une clé publique SSH");
+        bail!(tr!("ce n'est pas une clé publique SSH"));
     }
     let handle = ssh::connect(settings).await?;
     let channel = handle.channel_open_session().await?;
     channel
         .request_subsystem(true, "sftp")
         .await
-        .context("ce serveur n'accepte pas SFTP, nécessaire pour installer la clé")?;
+        .context(tr!("ce serveur n'accepte pas SFTP, nécessaire pour installer la clé"))?;
     let sftp = SftpSession::new(channel.into_stream())
         .await
-        .context("ouverture de la session SFTP impossible")?;
+        .context(tr!("ouverture de la session SFTP impossible"))?;
     let result = install_with(&sftp, line).await;
     let _ = sftp.close().await;
     let _ = handle
@@ -246,19 +246,19 @@ pub async fn install(settings: &SshSettings, line: &str) -> Result<Installed> {
 }
 
 async fn install_with(sftp: &SftpSession, line: &str) -> Result<Installed> {
-    let home = sftp.canonicalize(".").await.context("dossier personnel introuvable")?;
+    let home = sftp.canonicalize(".").await.context(tr!("dossier personnel introuvable"))?;
     let folder = format!("{}/.ssh", home.trim_end_matches('/'));
     let file = format!("{folder}/authorized_keys");
 
     if !sftp.try_exists(folder.as_str()).await? {
         sftp.create_dir(folder.as_str())
             .await
-            .with_context(|| format!("création de {folder} impossible"))?;
+            .with_context(|| tr!("création de {path} impossible", path = folder))?;
         set_mode(sftp, &folder, 0o700).await?;
     }
     let existed = sftp.try_exists(file.as_str()).await?;
     let bytes = if existed {
-        sftp.read(file.as_str()).await.with_context(|| format!("lecture de {file} impossible"))?
+        sftp.read(file.as_str()).await.with_context(|| tr!("lecture de {file} impossible", file))?
     } else {
         Vec::new()
     };
@@ -275,9 +275,9 @@ async fn install_with(sftp: &SftpSession, line: &str) -> Result<Installed> {
     let mut handle = sftp
         .open_with_flags_and_attributes(file.as_str(), flags, attributes)
         .await
-        .with_context(|| format!("écriture dans {file} impossible"))?;
+        .with_context(|| tr!("écriture dans {file} impossible", file))?;
     handle.seek(std::io::SeekFrom::Start(bytes.len() as u64)).await?;
-    handle.write_all(added).await.with_context(|| format!("écriture dans {file} impossible"))?;
+    handle.write_all(added).await.with_context(|| tr!("écriture dans {file} impossible", file))?;
     handle.shutdown().await?;
     if !existed {
         set_mode(sftp, &file, 0o600).await?;
@@ -290,7 +290,7 @@ async fn set_mode(sftp: &SftpSession, path: &str, mode: u32) -> Result<()> {
     attributes.permissions = Some(mode);
     sftp.set_metadata(path, attributes)
         .await
-        .map_err(|error| anyhow!("droits de {path} non modifiables : {error}"))
+        .map_err(|error| anyhow!(tr!("droits de {path} non modifiables : {error}", path, error)))
 }
 
 #[cfg(test)]

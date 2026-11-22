@@ -47,24 +47,25 @@ impl AsyncWrite for JumpStream {
 /// Connects to `jump` (through its own jump host, if any) and asks it for a
 /// TCP stream to `target`.
 pub async fn open_through(jump: &SshSettings, target: &SshSettings) -> Result<JumpStream> {
-    let name = if jump.extra.label.is_empty() { jump.address() } else { format!("« {} »", jump.extra.label) };
+    let name = if jump.extra.label.is_empty() { jump.address() } else { tr!("« {name} »", name = jump.extra.label) };
     let via = Box::pin(ssh::connect(jump))
         .await
-        .with_context(|| format!("serveur de rebond {name}"))?;
+        .with_context(|| tr!("serveur de rebond {name}", name))?;
     let channel = via
         .channel_open_direct_tcpip(target.host.clone(), u32::from(target.port), "127.0.0.1", 0)
         .await
         .map_err(|error| {
             let why = match error {
                 russh::Error::ChannelOpenFailure(ChannelOpenFailure::AdministrativelyProhibited) => {
-                    "il n'autorise pas la redirection TCP (AllowTcpForwarding)".to_owned()
+                    tr!("il n'autorise pas la redirection TCP (AllowTcpForwarding)").to_owned()
                 }
                 russh::Error::ChannelOpenFailure(ChannelOpenFailure::ConnectFailed) => {
-                    "le serveur ne répond pas de là-bas".to_owned()
+                    tr!("le serveur ne répond pas de là-bas").to_owned()
                 }
                 other => other.to_string(),
             };
-            anyhow!("le serveur de rebond {name} n'a pas pu joindre {}:{} : {why}", target.host, target.port)
+            let target = format!("{}:{}", target.host, target.port);
+            anyhow!(tr!("le serveur de rebond {name} n'a pas pu joindre {target} : {why}", name, target, why))
         })?;
     Ok(JumpStream {
         stream: channel.into_stream(),
@@ -81,22 +82,25 @@ pub fn chain<'a>(profiles: &'a [Profile], profile: &'a Profile) -> Result<Vec<&'
     let mut current = profile;
     while !current.jump.is_empty() {
         let Some(next) = profiles.iter().find(|candidate| candidate.id == current.jump) else {
-            return Err(format!(
-                "le serveur de rebond de « {} » n'existe plus : modifiez la connexion",
-                current.title()
+            return Err(tr!(
+                "le serveur de rebond de « {name} » n'existe plus : modifiez la connexion",
+                name = current.title()
             ));
         };
         if next.protocol != Protocol::Sftp {
-            return Err(format!("« {} » ne peut pas servir de rebond : ce n'est pas une connexion SSH", next.title()));
+            return Err(tr!(
+                "« {name} » ne peut pas servir de rebond : ce n'est pas une connexion SSH",
+                name = next.title()
+            ));
         }
         if !seen.insert(next.id.as_str()) {
             let mut names: Vec<&str> = std::iter::once(profile).chain(hops.iter().copied()).map(Profile::title).collect();
             names.push(next.title());
-            return Err(format!("les rebonds forment une boucle : {}", names.join(" → ")));
+            return Err(tr!("les rebonds forment une boucle : {path}", path = names.join(" → ")));
         }
         hops.push(next);
         if hops.len() > MAX_HOPS {
-            return Err(format!("« {} » passe par plus de {MAX_HOPS} rebonds", profile.title()));
+            return Err(tr!("« {name} » passe par plus de {max} rebonds", name = profile.title(), max = MAX_HOPS));
         }
         current = next;
     }

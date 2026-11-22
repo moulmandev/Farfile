@@ -114,10 +114,10 @@ fn navigation_bar(ui: &mut Ui, p: &Palette, session: &mut Session, actions: &mut
                 actions.push(action);
             }
         };
-        nav(ui, icon::ARROW_LEFT, "Précédent (Alt+←)", session.can_go_back(), Action::Back);
-        nav(ui, icon::ARROW_RIGHT, "Suivant (Alt+→)", session.can_go_forward(), Action::Forward);
-        nav(ui, icon::ARROW_UP, "Dossier parent (Retour arrière)", !session.path.is_root(), Action::Up);
-        nav(ui, icon::ARROWS_CLOCKWISE, "Actualiser (F5)", true, Action::Refresh);
+        nav(ui, icon::ARROW_LEFT, tr!("Précédent (Alt+←)"), session.can_go_back(), Action::Back);
+        nav(ui, icon::ARROW_RIGHT, tr!("Suivant (Alt+→)"), session.can_go_forward(), Action::Forward);
+        nav(ui, icon::ARROW_UP, tr!("Dossier parent (Retour arrière)"), !session.path.is_root(), Action::Up);
+        nav(ui, icon::ARROWS_CLOCKWISE, tr!("Actualiser (F5)"), true, Action::Refresh);
         ui.add_space(6.0);
 
         // The filter gives way before the path does.
@@ -130,7 +130,7 @@ fn navigation_bar(ui: &mut Ui, p: &Palette, session: &mut Session, actions: &mut
 
         let filter = ui.add(
             TextEdit::singleline(&mut session.filter)
-                .hint_text(format!("{}  Filtrer (Ctrl+F)", icon::MAGNIFYING_GLASS))
+                .hint_text(format!("{}  {}", icon::MAGNIFYING_GLASS, tr!("Filtrer (Ctrl+F)")))
                 .margin(Margin::symmetric(10, 6))
                 .desired_width(ui.available_width()),
         );
@@ -197,40 +197,40 @@ fn action_bar(ui: &mut Ui, p: &Palette, session: &Session, has_terminal: bool, a
                 format!("{glyph}  {text}")
             }
         };
-        let import = primary_button(ui, p, &caption(icon::UPLOAD_SIMPLE, "Importer"), in_bucket)
-            .on_hover_text("Importer des fichiers ou un dossier")
-            .on_disabled_hover_text("Ouvrez d'abord un bucket");
+        let import = primary_button(ui, p, &caption(icon::UPLOAD_SIMPLE, trc!("envoi", "Importer")), in_bucket)
+            .on_hover_text(tr!("Importer des fichiers ou un dossier"))
+            .on_disabled_hover_text(tr!("Ouvrez d'abord un bucket"));
         Popup::menu(&import).show(|ui| {
-            if ui.button(format!("{}  Des fichiers…", icon::FILES)).clicked() {
+            if ui.button(format!("{}  {}", icon::FILES, tr!("Des fichiers…"))).clicked() {
                 actions.push(Action::UploadFiles);
             }
-            if ui.button(format!("{}  Un dossier…", icon::FOLDER)).clicked() {
+            if ui.button(format!("{}  {}", icon::FOLDER, tr!("Un dossier…"))).clicked() {
                 actions.push(Action::UploadFolder);
             }
         });
 
-        let new_folder = Button::new(caption(icon::FOLDER_PLUS, "Nouveau dossier"));
+        let new_folder = Button::new(caption(icon::FOLDER_PLUS, tr!("Nouveau dossier")));
         if ui
             .add_enabled(in_bucket, new_folder)
-            .on_hover_text("Nouveau dossier")
+            .on_hover_text(tr!("Nouveau dossier"))
             .clicked()
         {
             actions.push(Action::AskNewFolder);
         }
 
         let can_act = in_bucket && selected > 0;
-        let download = Button::new(caption(icon::DOWNLOAD_SIMPLE, "Télécharger"));
+        let download = Button::new(caption(icon::DOWNLOAD_SIMPLE, tr!("Télécharger")));
         if ui
             .add_enabled(can_act, download)
-            .on_hover_text("Télécharger la sélection")
+            .on_hover_text(tr!("Télécharger la sélection"))
             .clicked()
         {
             actions.push(Action::DownloadSelection);
         }
-        let delete = Button::new(caption(icon::TRASH, "Supprimer"));
+        let delete = Button::new(caption(icon::TRASH, tr!("Supprimer")));
         if ui
             .add_enabled(can_act, delete)
-            .on_hover_text("Supprimer la sélection")
+            .on_hover_text(tr!("Supprimer la sélection"))
             .clicked()
         {
             actions.push(Action::AskDeleteSelection);
@@ -239,7 +239,7 @@ fn action_bar(ui: &mut Ui, p: &Palette, session: &Session, has_terminal: bool, a
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if has_terminal
-                && icon_button(ui, p, icon::TERMINAL_WINDOW, "Ouvrir le terminal dans ce dossier", true)
+                && icon_button(ui, p, icon::TERMINAL_WINDOW, tr!("Ouvrir le terminal dans ce dossier"), true)
                     .clicked()
             {
                 actions.push(Action::TerminalHere);
@@ -249,7 +249,7 @@ fn action_bar(ui: &mut Ui, p: &Palette, session: &Session, has_terminal: bool, a
             super::transfers::sync_button(ui, p, session, actions);
             let refreshing = session.listing().is_some_and(|listing| listing.loading);
             if refreshing && session.row_count() > 0 {
-                ui.label(small(p, "Actualisation…"));
+                ui.label(small(p, tr!("Actualisation…")));
                 ui.add(egui::Spinner::new().size(14.0).color(p.muted));
             }
         });
@@ -274,11 +274,11 @@ fn listing(
     };
 
     if let Some(error) = error {
-        placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, "Impossible d'afficher ce dossier", "");
+        placeholder(ui, p, icon::WARNING_CIRCLE, p.danger, tr!("Impossible d'afficher ce dossier"), "");
         ui.vertical_centered(|ui| {
             ui.add(Label::new(muted(p, error)).wrap());
             ui.add_space(8.0);
-            if ui.button(format!("{}  Réessayer", icon::ARROWS_CLOCKWISE)).clicked() {
+            if ui.button(format!("{}  {}", icon::ARROWS_CLOCKWISE, tr!("Réessayer"))).clicked() {
                 actions.push(Action::Refresh);
             }
         });
@@ -287,13 +287,13 @@ fn listing(
             ui.add_space((ui.available_height() * 0.35).max(24.0));
             ui.add(egui::Spinner::new().size(26.0).color(p.accent));
             ui.add_space(6.0);
-            ui.label(muted(p, "Chargement…"));
+            ui.label(muted(p, tr!("Chargement…")));
         });
     } else if empty {
         let (title, hint) = if !session.writable() {
-            ("Aucun bucket", "Ce compte ne contient aucun bucket visible.")
+            (tr!("Aucun bucket"), tr!("Ce compte ne contient aucun bucket visible."))
         } else {
-            ("Dossier vide", "Glissez des fichiers ici pour les importer.")
+            (tr!("Dossier vide"), tr!("Glissez des fichiers ici pour les importer."))
         };
         placeholder(ui, p, icon::FOLDER_OPEN, p.faint, title, hint);
     } else if session.row_count() == 0 {
@@ -302,8 +302,8 @@ fn listing(
             p,
             icon::MAGNIFYING_GLASS,
             p.faint,
-            "Aucun résultat",
-            &format!("Rien ne correspond à « {} ».", session.filter.trim()),
+            tr!("Aucun résultat"),
+            &tr!("Rien ne correspond à « {filter} ».", filter = session.filter.trim()),
         );
     } else {
         table(ui, p, session, editor, incoming, actions);
@@ -356,17 +356,17 @@ fn table(
         .header(HEADER_HEIGHT, |mut header| {
             header.col(|ui| {
                 ui.add_space(8.0);
-                sort_header(ui, p, "Nom", SortKey::Name, view, &mut sort_by);
+                sort_header(ui, p, tr!("Nom"), SortKey::Name, view, &mut sort_by);
             });
             header.col(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    sort_header(ui, p, "Taille", SortKey::Size, view, &mut sort_by);
+                    sort_header(ui, p, tr!("Taille"), SortKey::Size, view, &mut sort_by);
                 });
             });
             if dated {
                 header.col(|ui| {
                     ui.add_space(24.0);
-                    sort_header(ui, p, "Modifié", SortKey::Modified, view, &mut sort_by);
+                    sort_header(ui, p, tr!("Modifié"), SortKey::Modified, view, &mut sort_by);
                 });
             }
             extra.headers(&mut header, p);
@@ -547,7 +547,7 @@ fn context_menu(
         String::new()
     };
 
-    if !many && entry.is_dir() && ui.button(format!("{}  Ouvrir", icon::FOLDER_OPEN)).clicked() {
+    if !many && entry.is_dir() && ui.button(format!("{}  {}", icon::FOLDER_OPEN, tr!("Ouvrir"))).clicked() {
         actions.push(Action::Open(entry.name.clone()));
         ui.close();
     }
@@ -564,7 +564,7 @@ fn context_menu(
     }
 
     if ui
-        .button(format!("{}  Télécharger{suffix}", icon::DOWNLOAD_SIMPLE))
+        .button(format!("{}  {}{suffix}", icon::DOWNLOAD_SIMPLE, tr!("Télécharger")))
         .clicked()
     {
         actions.push(Action::DownloadSelection);
@@ -574,7 +574,7 @@ fn context_menu(
     super::transfers::folder_menu(ui, session, entry, many, actions);
     if !many && !entry.is_dir() {
         ui.separator();
-        if ui.button(format!("{}  Copier l'adresse", icon::COPY_SIMPLE)).clicked() {
+        if ui.button(format!("{}  {}", icon::COPY_SIMPLE, tr!("Copier l'adresse"))).clicked() {
             actions.push(Action::CopyUrl(entry.name.clone()));
             ui.close();
         }
@@ -583,7 +583,7 @@ fn context_menu(
     file_ops::context_menu(ui, session, entry, many, actions);
     ui.separator();
     if ui
-        .button(RichText::new(format!("{}  Supprimer{suffix}…", icon::TRASH)).color(p.danger))
+        .button(RichText::new(format!("{}  {}{suffix}…", icon::TRASH, tr!("Supprimer"))).color(p.danger))
         .clicked()
     {
         actions.push(Action::AskDeleteSelection);
@@ -594,7 +594,7 @@ fn context_menu(
 /// Text for the status bar: what is listed and what is selected.
 pub fn summary(session: &Session) -> String {
     let rows = session.row_count();
-    let mut text = format::count(rows, "élément", "éléments");
+    let mut text = trn!(rows, "{n} élément", "{n} éléments");
     let total: u64 = session.rows().filter_map(|entry| entry.size).sum();
     if total > 0 {
         text.push_str(&format!(" · {}", format::size(total)));
@@ -603,7 +603,7 @@ pub fn summary(session: &Session) -> String {
         let size: u64 = session.selected().filter_map(|entry| entry.size).sum();
         text.push_str(&format!(
             "   —   {}",
-            format::count(session.selection.len(), "sélectionné", "sélectionnés")
+            trn!(session.selection.len(), "{n} sélectionné", "{n} sélectionnés")
         ));
         if size > 0 {
             text.push_str(&format!(" · {}", format::size(size)));

@@ -81,10 +81,10 @@ impl SftpStorage {
         channel
             .request_subsystem(true, "sftp")
             .await
-            .context("ce serveur n'accepte pas SFTP")?;
+            .context(tr!("ce serveur n'accepte pas SFTP"))?;
         let sftp = SftpSession::new(channel.into_stream())
             .await
-            .context("ouverture de la session SFTP impossible")?;
+            .context(tr!("ouverture de la session SFTP impossible"))?;
         sftp.set_timeout(REQUEST_TIMEOUT);
 
         let opened = Arc::new(Live { handle, sftp });
@@ -172,7 +172,7 @@ fn tar_complaints(errors: &str, dest: &Path) -> Vec<String> {
                 if local != dest {
                     let _ = std::fs::remove_dir(&local);
                 }
-                complaints.push(format!("{} : {why}", archive::below(name)));
+                complaints.push(tr!("{name} : {error}", name = archive::below(name), error = why));
             }
             _ => complaints.push(line.to_owned()),
         }
@@ -215,7 +215,9 @@ async fn write_in_place(live: &Live, src: &Path, remote: &str) -> Result<()> {
     let mut file = live.sftp.create(remote).await?;
     send_file(src, &mut file, &Progress::default())
         .await
-        .context("l'enregistrement s'est arrêté en cours : le fichier sur le serveur est peut-être incomplet")?;
+        .context(tr!(
+            "l'enregistrement s'est arrêté en cours : le fichier sur le serveur est peut-être incomplet"
+        ))?;
     file.shutdown().await?;
     Ok(())
 }
@@ -381,7 +383,8 @@ impl Storage for SftpStorage {
             .or(status);
         report.unreadable = tar_complaints(&errors, dest);
         if report.unreadable.is_empty() && status.is_some_and(|code| code > 1) {
-            report.unreadable.push(format!("tar s'est arrêté avec le code {}", status.unwrap_or_default()));
+            let code = status.unwrap_or_default();
+            report.unreadable.push(tr!("tar s'est arrêté avec le code {code}", code));
         }
         Ok(Some(report))
     }
@@ -562,12 +565,12 @@ impl Storage for SftpStorage {
         let aside = folder.child(&format!(".{}.s3v-{tag}.old", real.name())).to_string();
         if let Err(error) = live.sftp.rename(target.as_str(), aside.as_str()).await {
             let _ = live.sftp.remove_file(temp).await;
-            return Err(error).context("impossible de remplacer le fichier");
+            return Err(error).context(tr!("impossible de remplacer le fichier"));
         }
         if let Err(error) = live.sftp.rename(temp.as_str(), target.as_str()).await {
             let _ = live.sftp.rename(aside, target).await;
             let _ = live.sftp.remove_file(temp).await;
-            return Err(error).context("impossible de remplacer le fichier");
+            return Err(error).context(tr!("impossible de remplacer le fichier"));
         }
         let _ = live.sftp.remove_file(aside).await;
         Ok(())
@@ -603,7 +606,7 @@ impl Storage for SftpStorage {
         let remote = dest.to_string();
         let local = tokio::fs::metadata(src)
             .await
-            .with_context(|| format!("impossible de lire {}", src.display()))?
+            .with_context(|| tr!("impossible de lire {path}", path = src.display()))?
             .len();
         progress.set_total(local);
         let mut offset = 0;

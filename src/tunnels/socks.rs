@@ -58,14 +58,14 @@ impl Error {
     pub fn describe(&self) -> Option<&'static str> {
         match self {
             Self::Io => None,
-            Self::NotSocks => Some(
-                "Une application a parlé au proxy sans utiliser SOCKS : réglez-la sur un proxy SOCKS5, pas HTTP",
-            ),
+            Self::NotSocks => Some(tr!(
+                "Une application a parlé au proxy sans utiliser SOCKS : réglez-la sur un proxy SOCKS5, pas HTTP"
+            )),
             Self::NoAcceptableMethod => {
-                Some("Une application exige une authentification SOCKS, que ce proxy ne demande pas")
+                Some(tr!("Une application exige une authentification SOCKS, que ce proxy ne demande pas"))
             }
-            Self::Unsupported => Some("Une application a demandé autre chose qu'une connexion (BIND ou UDP)"),
-            Self::BadAddress => Some("Une application a envoyé une adresse SOCKS illisible"),
+            Self::Unsupported => Some(tr!("Une application a demandé autre chose qu'une connexion (BIND ou UDP)")),
+            Self::BadAddress => Some(tr!("Une application a envoyé une adresse SOCKS illisible")),
         }
     }
 }

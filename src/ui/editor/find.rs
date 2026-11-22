@@ -27,13 +27,13 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
             ui.horizontal(|ui| {
                 let caret = if editor.find.replacing { icon::CARET_DOWN } else { icon::CARET_RIGHT };
-                if icon_button(ui, p, caret, "Remplacer (Ctrl+H)", true).clicked() {
+                if icon_button(ui, p, caret, tr!("Remplacer (Ctrl+H)"), true).clicked() {
                     editor.find.replacing = !editor.find.replacing;
                 }
                 let before = editor.find.query.clone();
                 let query = ui.add(
                     TextEdit::singleline(&mut editor.find.query.text)
-                        .hint_text("Rechercher")
+                        .hint_text(trc!("éditeur", "Rechercher"))
                         .desired_width(FIELD_WIDTH)
                         .margin(Margin::symmetric(8, 4))
                         .return_key(None),
@@ -43,9 +43,9 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
                     query.request_focus();
                     select_all(ui, query.id, editor.find.query.text.chars().count());
                 }
-                toggle(ui, &mut editor.find.query.case, "Aa", "Respecter la casse");
-                toggle(ui, &mut editor.find.query.word, "Mot", "Mot entier");
-                toggle(ui, &mut editor.find.query.regex, ".*", "Expression régulière");
+                toggle(ui, &mut editor.find.query.case, "Aa", tr!("Respecter la casse"));
+                toggle(ui, &mut editor.find.query.word, tr!("Mot"), tr!("Mot entier"));
+                toggle(ui, &mut editor.find.query.regex, ".*", tr!("Expression régulière"));
                 if editor.find.query != before {
                     // As one types, the nearest match from where the search
                     // started is shown.
@@ -63,13 +63,13 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
                     egui::Label::new(RichText::new(label).size(12.0).color(if error { p.danger } else { p.muted })).truncate(),
                 )
                 .on_hover_text(editor.find.error.clone().unwrap_or_default());
-                if icon_button(ui, p, icon::ARROW_UP, "Précédent (Maj+Entrée, Maj+F3)", true).clicked() {
+                if icon_button(ui, p, icon::ARROW_UP, tr!("Précédent (Maj+Entrée, Maj+F3)"), true).clicked() {
                     editor.find_next(false);
                 }
-                if icon_button(ui, p, icon::ARROW_DOWN, "Suivant (Entrée, F3)", true).clicked() {
+                if icon_button(ui, p, icon::ARROW_DOWN, tr!("Suivant (Entrée, F3)"), true).clicked() {
                     editor.find_next(true);
                 }
-                if icon_button(ui, p, icon::X, "Fermer (Échap)", true).clicked() {
+                if icon_button(ui, p, icon::X, tr!("Fermer (Échap)"), true).clicked() {
                     close(editor);
                 }
                 if query.has_focus() {
@@ -89,7 +89,7 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
                     ui.add_space(34.0);
                     let field = ui.add(
                         TextEdit::singleline(&mut editor.find.with)
-                            .hint_text(if editor.find.query.regex { "Remplacer par ($1, \\n…)" } else { "Remplacer par" })
+                            .hint_text(if editor.find.query.regex { tr!("Remplacer par ($1, \\n…)") } else { tr!("Remplacer par") })
                             .desired_width(FIELD_WIDTH)
                             .margin(Margin::symmetric(8, 4))
                             .return_key(None),
@@ -100,10 +100,10 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
                         select_all(ui, field.id, editor.find.with.chars().count());
                     }
                     let any = !editor.find.matches().is_empty();
-                    if ui.add_enabled(any, Button::new("Remplacer")).on_hover_text("Entrée").clicked() {
+                    if ui.add_enabled(any, Button::new(tr!("Remplacer"))).on_hover_text(tr!("Entrée")).clicked() {
                         editor.replace_one();
                     }
-                    if ui.add_enabled(any, Button::new("Tout remplacer")).on_hover_text("Ctrl+Alt+Entrée").clicked() {
+                    if ui.add_enabled(any, Button::new(tr!("Tout remplacer"))).on_hover_text(tr!("Ctrl+Alt+Entrée")).clicked() {
                         notice = Some(replaced(editor.replace_all()));
                     }
                     if field.has_focus() {
@@ -128,9 +128,8 @@ pub fn bar(ui: &mut Ui, p: &Palette, editor: &mut Editor) -> Option<String> {
 
 fn replaced(count: usize) -> String {
     match count {
-        0 => "Rien à remplacer".to_owned(),
-        1 => "1 remplacement".to_owned(),
-        _ => format!("{} remplacements", crate::editor::thousands(count)),
+        0 => tr!("Rien à remplacer").to_owned(),
+        _ => trn!(count, "{count} remplacement", "{count} remplacements", count = crate::editor::thousands(count)),
     }
 }
 
@@ -177,11 +176,11 @@ pub fn goto(ui: &mut Ui, p: &Palette, editor: &mut Editor, area: egui::Rect) {
                 .shadow(ui.ctx().global_style().visuals.popup_shadow)
                 .show(ui, |ui| {
                     ui.set_width(size.x - 24.0);
-                    let title = format!("Aller à la ligne (1 à {})", crate::editor::thousands(lines));
+                    let title = tr!("Aller à la ligne (1 à {last})", last = crate::editor::thousands(lines));
                     ui.label(RichText::new(title).size(12.0).color(p.muted));
                     let field = ui.add(
                         TextEdit::singleline(&mut typed)
-                            .hint_text("Ligne, ou ligne:colonne")
+                            .hint_text(tr!("Ligne, ou ligne:colonne"))
                             .desired_width(f32::INFINITY)
                             .return_key(None),
                     );

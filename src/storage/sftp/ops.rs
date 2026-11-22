@@ -116,7 +116,7 @@ impl SftpStorage {
                 () = cancelled(progress) => {
                     let _ = channel.signal(Sig::TERM).await;
                     let _ = channel.close().await;
-                    bail!("annulé");
+                    bail!(tr!("annulé"));
                 }
             };
             match message {
@@ -157,7 +157,7 @@ impl SftpStorage {
             live.sftp
                 .create_dir(folder.to_string())
                 .await
-                .with_context(|| format!("impossible de créer {folder}"))?;
+                .with_context(|| tr!("impossible de créer {path}", path = folder))?;
         }
         for (file, _) in &tree.files {
             copy_file(live, &from.child(file).to_string(), &to.child(file).to_string(), progress).await?;
@@ -179,8 +179,8 @@ impl SftpStorage {
             _ => {
                 let current = live.sftp.metadata(path.as_str()).await?;
                 (
-                    uid.or(current.uid).context("le propriétaire actuel est inconnu")?,
-                    gid.or(current.gid).context("le groupe actuel est inconnu")?,
+                    uid.or(current.uid).context(tr!("le propriétaire actuel est inconnu"))?,
+                    gid.or(current.gid).context(tr!("le groupe actuel est inconnu"))?,
                 )
             }
         };
@@ -246,14 +246,14 @@ async fn set_mode(live: &Live, path: &str, mode: u32) -> Result<()> {
 /// One file, read and written back, with the permissions of the original.
 /// A copy that fails midway is removed.
 async fn copy_file(live: &Live, from: &str, to: &str, progress: &Progress) -> Result<()> {
-    let mut source = live.sftp.open(from).await.with_context(|| format!("impossible de lire {from}"))?;
+    let mut source = live.sftp.open(from).await.with_context(|| tr!("impossible de lire {path}", path = from))?;
     let mode = source.metadata().await.ok().and_then(|meta| meta.permissions);
-    let mut target = live.sftp.create(to).await.with_context(|| format!("impossible de créer {to}"))?;
+    let mut target = live.sftp.create(to).await.with_context(|| tr!("impossible de créer {path}", path = to))?;
     let copied = async {
         let mut buffer = vec![0u8; CHUNK];
         loop {
             if progress.is_cancelled() {
-                bail!("annulé");
+                bail!(tr!("annulé"));
             }
             let read = source.read(&mut buffer).await?;
             if read == 0 {

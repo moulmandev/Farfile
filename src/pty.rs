@@ -62,7 +62,7 @@ impl Shell {
             .unwrap_or_else(|| system32().join("cmd.exe"));
         Self {
             kind: ShellKind::Cmd,
-            label: "Invite de commandes".to_owned(),
+            label: tr!("Invite de commandes").to_owned(),
             program,
             args: Vec::new(),
         }
@@ -276,11 +276,11 @@ pub async fn run(launch: &Launch, feed: Feed, mut commands: UnboundedReceiver<In
     let (cols, rows) = feed.size();
     let pair = native_pty_system()
         .openpty(size(cols, rows))
-        .context("pseudo-console indisponible")?;
+        .context(tr!("pseudo-console indisponible"))?;
     let mut child = pair
         .slave
         .spawn_command(launch.command())
-        .with_context(|| format!("impossible de lancer {}", launch.shell.program.display()))?;
+        .with_context(|| tr!("impossible de lancer {program}", program = launch.shell.program.display()))?;
     drop(pair.slave);
     let master = pair.master;
     let mut killer = child.clone_killer();

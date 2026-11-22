@@ -9,7 +9,7 @@
 
 mod header;
 mod snippets;
-mod stats;
+pub(crate) mod stats;
 
 use std::sync::Arc;
 

@@ -114,11 +114,11 @@ impl App {
             return;
         }
         if dev::active() {
-            self.toast(now, format!("Lien à ouvrir : {url}"), false);
+            self.toast(now, tr!("Lien à ouvrir : {url}", url), false);
             return;
         }
         if let Err(error) = open::that_detached(url) {
-            self.toast(now, format!("Ouverture du lien impossible : {error}"), true);
+            self.toast(now, tr!("Ouverture du lien impossible : {error}", error), true);
         }
     }
 
@@ -161,10 +161,10 @@ impl App {
                     .unwrap_or(folder)
             };
             let picked = rfd::FileDialog::new()
-                .set_title("Enregistrer la session")
+                .set_title(tr!("Enregistrer la session"))
                 .set_directory(&start)
                 .set_file_name(&name)
-                .add_filter("Journal de session", &["log", "txt"])
+                .add_filter(tr!("Journal de session"), &["log", "txt"])
                 .save_file();
             match picked {
                 Some(path) => path,
@@ -182,9 +182,12 @@ impl App {
         });
         let file = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         match started {
-            Ok(()) if ask => self.toast(now, format!("Enregistrement de la session dans « {file} »"), false),
+            Ok(()) if ask => self.toast(now, tr!("Enregistrement de la session dans « {file} »", file), false),
             Ok(()) => {}
-            Err(error) => self.toast(now, format!("Enregistrement de la session impossible : {error:#}"), true),
+            Err(error) => {
+                let text = tr!("Enregistrement de la session impossible : {error}", error = format!("{error:#}"));
+                self.toast(now, text, true);
+            }
         }
     }
 
@@ -193,8 +196,11 @@ impl App {
             return;
         };
         match stopped {
-            Ok(path) => self.toast(now, format!("Session enregistrée dans {}", path.display()), false),
-            Err(error) => self.toast(now, format!("Le journal n'a pas pu être terminé : {error:#}"), true),
+            Ok(path) => self.toast(now, tr!("Session enregistrée dans {path}", path = path.display()), false),
+            Err(error) => {
+                let text = tr!("Le journal n'a pas pu être terminé : {error}", error = format!("{error:#}"));
+                self.toast(now, text, true);
+            }
         }
     }
 
@@ -395,7 +401,7 @@ impl App {
             "termfonts" => {
                 // Lists the fixed-width fonts found, for the record of a run.
                 let names: Vec<&str> = fonts::catalog_now().iter().map(|family| family.name.as_str()).collect();
-                self.toast(now, format!("Polices : {}", names.join(", ")), false);
+                self.toast(now, tr!("Polices : {names}", names = names.join(", ")), false);
             }
             _ => return false,
         }

@@ -279,40 +279,48 @@ impl Terminal {
 
     /// The kind of session, for the status bar.
     pub fn kind_label(&self) -> &'static str {
-        if self.local { "Terminal local" } else { "SSH" }
+        if self.local { tr!("Terminal local") } else { "SSH" }
     }
 
     /// What is shown while the shell is on its way.
     pub fn starting_text(&self) -> String {
         if self.local {
-            format!("Démarrage de {}…", self.address)
+            tr!("Démarrage de {address}…", address = self.address)
         } else {
-            format!("Connexion à {}…", self.address)
+            tr!("Connexion à {address}…", address = self.address)
         }
     }
 
     /// The button that starts the shell again once it ended.
     pub fn restart_label(&self) -> &'static str {
-        if self.local { "Redémarrer" } else { "Reconnecter" }
+        if self.local { tr!("Redémarrer") } else { tr!("Reconnecter") }
     }
 
     /// What is said once the shell is gone: whether it went wrong, a title
     /// and a detail.
     pub fn ending(&self, status: &Status) -> (bool, &'static str, String) {
         match (status, self.local) {
-            (Status::Failed(reason), false) => (true, "Connexion impossible", reason.clone()),
-            (Status::Failed(reason), true) => (true, "Démarrage impossible", reason.clone()),
-            (Status::Closed(Some(reason)), false) => (true, "Connexion interrompue", reason.clone()),
-            (Status::Closed(Some(reason)), true) => (true, "Terminal interrompu", reason.clone()),
+            (Status::Failed(reason), false) => (true, tr!("Connexion impossible"), reason.clone()),
+            (Status::Failed(reason), true) => (true, tr!("Démarrage impossible"), reason.clone()),
+            (Status::Closed(Some(reason)), false) => (true, tr!("Connexion interrompue"), reason.clone()),
+            (Status::Closed(Some(reason)), true) => (true, tr!("Terminal interrompu"), reason.clone()),
             (_, true) => match self.exit_code() {
                 Some(code) if code != 0 => (
                     true,
-                    "Session terminée",
-                    format!("{} s'est arrêté avec le code {}", self.address, exit_code_text(code)),
+                    tr!("Session terminée"),
+                    tr!(
+                        "{name} s'est arrêté avec le code {code}",
+                        name = self.address,
+                        code = exit_code_text(code)
+                    ),
                 ),
-                _ => (false, "Session terminée", format!("{} · code de sortie 0", self.address)),
+                _ => (
+                    false,
+                    tr!("Session terminée"),
+                    tr!("{name} · code de sortie 0", name = self.address),
+                ),
             },
-            _ => (false, "Session terminée", self.address.clone()),
+            _ => (false, tr!("Session terminée"), self.address.clone()),
         }
     }
 

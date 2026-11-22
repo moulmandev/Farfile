@@ -51,12 +51,13 @@ pub struct HostKeyCheck {
 
 impl HostKeyCheck {
     fn changed(&self, file: &Path, line: usize) -> anyhow::Error {
-        anyhow!(
-            "la clé du serveur {} a changé depuis la dernière connexion ({}, ligne {line}). \
+        anyhow!(tr!(
+            "la clé du serveur {host} a changé depuis la dernière connexion ({file}, ligne {line}). \
              Connexion refusée : si ce changement est attendu, supprimez cette ligne.",
-            self.host,
-            file.display(),
-        )
+            host = self.host,
+            file = file.display(),
+            line,
+        ))
     }
 }
 
@@ -68,7 +69,7 @@ impl client::Handler for HostKeyCheck {
             return Ok(true);
         };
         let PublicKeyOrCertificate::PublicKey { key, .. } = server_key else {
-            bail!("ce serveur présente un certificat d'hôte, ce qui n'est pas encore pris en charge");
+            bail!(tr!("ce serveur présente un certificat d'hôte, ce qui n'est pas encore pris en charge"));
         };
 
         // The user's own OpenSSH file first: hosts they already trust there
@@ -88,7 +89,7 @@ impl client::Handler for HostKeyCheck {
             // First visit: remember the key so that a later change is caught.
             _ => {
                 keys::known_hosts::learn_known_hosts_path(&self.host, self.port, key, ours)
-                    .context("impossible d'enregistrer la clé du serveur")?;
+                    .context(tr!("impossible d'enregistrer la clé du serveur"))?;
                 Ok(true)
             }
         }
@@ -116,6 +117,15 @@ impl client::Handler for HostKeyCheck {
 
 /// Opens an authenticated connection, through its jump host if it has one.
 pub async fn connect(settings: &SshSettings) -> Result<SshHandle> {
+    let mut handle = open(settings).await?;
+    crate::ssh_auth::authenticate(&mut handle, settings).await?;
+    Ok(handle)
+}
+
+/// Reaches the server and checks its key, without logging in yet: what
+/// fails here is the network or the server, not the credentials (see
+/// `crate::monitor`, which tells the two apart).
+pub async fn open(settings: &SshSettings) -> Result<SshHandle> {
     if let Some(problem) = &settings.extra.problem {
         bail!("{problem}");
     }
@@ -136,13 +146,10 @@ pub async fn connect(settings: &SshSettings) -> Result<SshHandle> {
         let address = (settings.host.as_str(), settings.port);
         tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, address, handler)).await
     };
-    let mut handle = handshake
-        .map_err(|_| anyhow!("le serveur {} ne répond pas", settings.host))?
+    handshake
+        .map_err(|_| anyhow!(tr!("le serveur {host} ne répond pas", host = settings.host)))?
         .map_err(crate::ssh_auth::explain_handshake)
-        .with_context(|| format!("connexion à {}:{} impossible", settings.host, settings.port))?;
-
-    crate::ssh_auth::authenticate(&mut handle, settings).await?;
-    Ok(handle)
+        .with_context(|| tr!("connexion à {host}:{port} impossible", host = settings.host, port = settings.port))
 }
 
 /// What a command run by [`run_command`] printed, and how it ended.
@@ -164,7 +171,7 @@ pub async fn run_command(handle: &SshHandle, command: &str) -> Result<CommandOut
     let mut channel = handle
         .channel_open_session()
         .await
-        .context("ouverture d'un canal impossible")?;
+        .context(tr!("ouverture d'un canal impossible"))?;
     channel.exec(true, command).await?;
     let mut output = CommandOutput {
         stdout: Vec::new(),
@@ -180,7 +187,7 @@ pub async fn run_command(handle: &SshHandle, command: &str) -> Result<CommandOut
             russh::ChannelMsg::Data { data } => keep(&mut output.stdout, &data),
             russh::ChannelMsg::ExtendedData { data, ext: 1 } => keep(&mut output.stderr, &data),
             russh::ChannelMsg::ExitStatus { exit_status } => output.exit_status = Some(exit_status),
-            russh::ChannelMsg::Failure => bail!("le serveur a refusé d'exécuter la commande"),
+            russh::ChannelMsg::Failure => bail!(tr!("le serveur a refusé d'exécuter la commande")),
             russh::ChannelMsg::Close => break,
             _ => {}
         }

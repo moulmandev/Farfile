@@ -44,7 +44,7 @@ async fn connect(path: &str) -> Result<Client> {
 async fn within<T>(future: impl Future<Output = Result<T>>) -> Result<T> {
     tokio::time::timeout(AGENT_TIMEOUT, future)
         .await
-        .map_err(|_| anyhow!("pas de réponse"))?
+        .map_err(|_| anyhow!(tr!("pas de réponse")))?
 }
 
 /// An agent that is really there: connecting is not enough, since the
@@ -70,18 +70,18 @@ impl Agent {
                     Some(russh::keys::Error::IO(io)) if io.kind() == std::io::ErrorKind::NotFound
                 );
                 if absent {
-                    anyhow!("aucun agent SSH ne répond sur {pipe} : il n'est pas démarré")
+                    anyhow!(tr!("aucun agent SSH ne répond sur {pipe} : il n'est pas démarré", pipe))
                 } else {
-                    error.context(format!("aucun agent SSH ne répond sur {pipe}"))
+                    error.context(tr!("aucun agent SSH ne répond sur {pipe}", pipe))
                 }
             })?;
             return Ok(Self {
                 client,
-                name: format!("l'agent SSH de {pipe}"),
+                name: tr!("l'agent SSH de {pipe}", pipe),
             });
         }
         if !system {
-            bail!("l'agent SSH de l'utilisateur n'est jamais consulté pendant les tests et les exécutions scriptées");
+            bail!(tr!("l'agent SSH de l'utilisateur n'est jamais consulté pendant les tests et les exécutions scriptées"));
         }
 
         if let Some(socket) = std::env::var("SSH_AUTH_SOCK").ok().filter(|socket| usable_socket(socket))
@@ -89,7 +89,7 @@ impl Agent {
         {
             return Ok(Self {
                 client,
-                name: format!("l'agent SSH de {socket}"),
+                name: tr!("l'agent SSH de {pipe}", pipe = socket),
             });
         }
         #[cfg(windows)]
@@ -97,7 +97,7 @@ impl Agent {
             if let Ok(client) = answering(connect(OPENSSH_PIPE)).await {
                 return Ok(Self {
                     client,
-                    name: "l'agent OpenSSH de Windows".to_owned(),
+                    name: tr!("l'agent OpenSSH de Windows").to_owned(),
                 });
             }
             let pageant = async { Ok(AgentClient::connect_pageant().await?.dynamic()) };
@@ -107,14 +107,14 @@ impl Agent {
                     name: "Pageant".to_owned(),
                 });
             }
-            bail!(
+            bail!(tr!(
                 "aucun agent SSH ne répond : ni l'agent OpenSSH de Windows (le service « OpenSSH \
                  Authentication Agent », qu'utilisent aussi 1Password et Bitwarden), ni Pageant. \
                  Démarrez-en un ou choisissez une autre méthode"
-            )
+            ))
         }
         #[cfg(not(windows))]
-        bail!("aucun agent SSH ne répond : SSH_AUTH_SOCK n'indique aucun agent en marche")
+        bail!(tr!("aucun agent SSH ne répond : SSH_AUTH_SOCK n'indique aucun agent en marche"))
     }
 
     /// Offers the keys of the agent until the server takes one, at most
@@ -133,7 +133,7 @@ impl Agent {
         }
         let identities = within(async { Ok(self.client.request_identities().await?) })
             .await
-            .with_context(|| format!("{} n'a pas donné ses clés", self.name))?;
+            .with_context(|| tr!("{agent} n'a pas donné ses clés", agent = self.name))?;
         if identities.is_empty() {
             return Ok(Attempt::Empty);
         }
