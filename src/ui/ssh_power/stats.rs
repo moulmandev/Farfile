@@ -4,7 +4,8 @@
 use egui::{Align2, Color32, FontId, Grid, Id, Rect, RichText, Sense, Ui, pos2, vec2};
 
 use crate::format;
-use crate::ssh_power::stats::{Disk, Status, View, decimal, percent, uptime_text};
+pub(crate) use crate::ssh_power::stats::fullest;
+use crate::ssh_power::stats::{Status, View, decimal, percent, uptime_text};
 use crate::theme::{Palette, semibold};
 use crate::ui::widgets::icon;
 
@@ -37,13 +38,6 @@ fn figure(label: impl Into<String>, value: impl Into<String>, gauge: Option<f32>
     }
 }
 
-/// The fullest of the disks, which is the one to watch; the root one, which
-/// comes first, when they are as full.
-pub(crate) fn fullest(disks: &[Disk]) -> Option<&Disk> {
-    disks
-        .iter()
-        .reduce(|best, disk| if disk.fraction() > best.fraction() + 0.005 { disk } else { best })
-}
 
 /// `7,5 / 30,9 Go`: the unit once when both sizes share it.
 pub(crate) fn size_pair(used: u64, total: u64) -> String {

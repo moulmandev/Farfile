@@ -3,8 +3,7 @@
 //! `crate::file_ops`, the drawing in `crate::ui::file_ops`.
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use egui::{Event, Key, Modifiers};
@@ -13,10 +12,9 @@ use super::App;
 use crate::dev;
 use crate::file_ops::{
     self as model, Change, Clipboard, ClipboardView, Dragged, Existing, Mode, OpsEvent, Picked, Plan, Renaming, Scope,
-    Sizing, check_name, moved_path, permissions_label, refuse, toggle_bookmark,
+    SizeNote, Sizing, check_name, moved_path, permissions_label, refuse, toggle_bookmark,
 };
 use crate::session::Session;
-use crate::storage::ops::Tally;
 use crate::storage::{Entry, EntryKind, RemotePath, Storage, storage_key};
 use crate::ui::Action;
 use crate::ui::dialogs::Dialog;
@@ -82,7 +80,35 @@ impl App {
                 };
                 let storage = session.storage.clone();
                 let folders: Vec<RemotePath> = picked(session).into_iter().filter(|item| item.is_dir).map(|item| item.path).collect();
-                self.count_sizes(&storage, folders, ctx, now);
+                self.count_sizes(&storage, folders, false, ctx, now);
+            }
+            OpsAction::SizeAll => {
+                let Some(session) = self.session() else {
+                    return;
+                };
+                let storage = session.storage.clone();
+                let folders: Vec<RemotePath> = session
+                    .rows()
+                    .filter(|entry| entry.is_dir())
+                    .map(|entry| session.path.child(&entry.name))
+                    .collect();
+                self.count_sizes(&storage, folders, true, ctx, now);
+            }
+            OpsAction::StopSizes => {
+                let Some(session) = self.session() else {
+                    return;
+                };
+                let (key, folder) = (session.storage_key(), session.path.clone());
+                let counting: Vec<RemotePath> = self
+                    .file_ops
+                    .sizes
+                    .iter()
+                    .filter(|((k, path), sizing)| *k == key && sizing.is_running() && path.parent().as_ref() == Some(&folder))
+                    .map(|((_, path), _)| path.clone())
+                    .collect();
+                for path in counting {
+                    self.stop_size(key, &path);
+                }
             }
             OpsAction::CancelJob(id) => {
                 if let Some(job) = self.file_ops.jobs.iter().find(|job| job.id == id) {
@@ -386,22 +412,23 @@ impl App {
         self.open_dialog(Dialog::FileOps(OpsDialog::Properties(Box::new(view))));
     }
 
-    /// Counts the size of these folders, again for those counted already.
-    fn count_sizes(&mut self, storage: &Arc<dyn Storage>, folders: Vec<RemotePath>, ctx: &egui::Context, now: f64) {
+    /// Counts the size of these folders, again for those counted already,
+    /// a few at a time. `quiet`: failures show on the rows of the listing
+    /// only, as when every folder of it is counted.
+    fn count_sizes(&mut self, storage: &Arc<dyn Storage>, folders: Vec<RemotePath>, quiet: bool, ctx: &egui::Context, now: f64) {
         let key = storage_key(storage);
+        let mut queue = Vec::new();
         for path in folders {
             if self.file_ops.size_of(key, &path).is_some_and(|sizing| sizing.is_running()) {
                 continue;
             }
-            let sizing = Arc::new(Sizing {
-                tally: Tally::default(),
-                finished: AtomicBool::new(false),
-                error: Mutex::new(None),
-                started: now,
-            });
+            let sizing = Arc::new(Sizing::new(now, quiet));
             self.file_ops.sizes.insert((key, path.clone()), sizing.clone());
+            queue.push((path, sizing));
+        }
+        if !queue.is_empty() {
             let reply = self.file_ops.reply(ctx);
-            self.worker.spawn(model::run_size(storage.clone(), path, sizing, reply));
+            self.worker.spawn(model::run_sizes(storage.clone(), queue, reply));
         }
     }
 
@@ -640,9 +667,20 @@ impl App {
                 state.renaming = None;
             }
             state.sizing.clear();
+            state.size_notes.clear();
             for ((sized_key, path), sizing) in &self.file_ops.sizes {
-                if *sized_key == key && sizing.is_running() && path.parent().as_ref() == Some(&session.path) {
-                    state.sizing.insert(path.name().to_owned());
+                if *sized_key != key || path.parent().as_ref() != Some(&session.path) {
+                    continue;
+                }
+                let name = path.name().to_owned();
+                if sizing.is_running() {
+                    state.sizing.insert(name.clone());
+                }
+                let unreadable = sizing.tally.snapshot().unreadable;
+                if let Some(error) = sizing.error() {
+                    state.size_notes.insert(name, SizeNote::Failed(error));
+                } else if unreadable > 0 {
+                    state.size_notes.insert(name, SizeNote::Partial(unreadable));
                 }
             }
             if state.columns.owner
@@ -672,7 +710,7 @@ impl App {
             let mut changed = false;
             if let Some(listing) = session.listing_mut() {
                 for (path, sizing) in sizes.iter().filter(|((k, path), _)| *k == key && path.parent().as_ref() == Some(&folder)) {
-                    let size = (!sizing.failed()).then(|| sizing.tally.snapshot().bytes);
+                    let size = sizing.shown();
                     let name = path.1.name();
                     if let Some(entry) = listing.entries.iter_mut().find(|entry| entry.is_dir() && entry.name == name)
                         && entry.size != size
@@ -744,7 +782,7 @@ impl App {
         );
         let (storage, key, items, entries) = (view.storage.clone(), view.storage_key, view.items.clone(), view.entries.clone());
         if size {
-            self.count_sizes(&storage, folders.clone(), ctx, now);
+            self.count_sizes(&storage, folders.clone(), false, ctx, now);
         }
         if stop {
             for path in &folders {
@@ -878,7 +916,8 @@ impl App {
     /// selection on that folder row, `dropcrumb 1` on that part of the path;
     /// `perms` opens the permissions, then `octal 750`, `recurse files`
     /// (`folders`, `all`, `off`), `owner name`, `group name`; `props`,
-    /// `size`, `propsize` (its button in the properties); `bookmark`,
+    /// `size`, `propsize` (its button in the properties), `sizes` (every
+    /// folder shown, as the button of the bar) and `stopsizes`; `bookmark`,
     /// `gobookmark 0`, `renamebookmark 0`, `removebookmark 0`; `columns
     /// perms` or `columns owner`; `fill text` types in the field of the
     /// dialog; `choose replace` (or `skip`) answers the clashes before
@@ -951,6 +990,8 @@ impl App {
             }
             "props" => OpsAction::Properties,
             "size" => OpsAction::ComputeSize,
+            "sizes" => OpsAction::SizeAll,
+            "stopsizes" => OpsAction::StopSizes,
             "propsize" => {
                 if let Some(Dialog::FileOps(OpsDialog::Properties(view))) = &mut self.dialog {
                     view.wants_size = true;

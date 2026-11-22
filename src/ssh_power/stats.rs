@@ -326,6 +326,14 @@ fn parse_df(lines: &[&str]) -> Vec<Disk> {
     disks
 }
 
+/// The fullest of the disks, which is the one to watch; the root one, which
+/// comes first, when they are as full.
+pub fn fullest(disks: &[Disk]) -> Option<&Disk> {
+    disks
+        .iter()
+        .reduce(|best, disk| if disk.fraction() > best.fraction() + 0.005 { disk } else { best })
+}
+
 /// The share of processor time spent working between two readings.
 pub fn cpu_usage(before: CpuTimes, after: CpuTimes) -> Option<f32> {
     let total = after.total.checked_sub(before.total).filter(|total| *total > 0)?;

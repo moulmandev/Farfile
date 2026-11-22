@@ -14,6 +14,8 @@
 //! (fail2ban and the like).
 
 pub mod alerts;
+pub mod dashboard;
+pub mod history;
 pub mod notify;
 #[cfg(windows)]
 pub mod tray;
@@ -57,8 +59,8 @@ const MAX_RETRY: Duration = Duration::from_secs(60);
 const UNSUPPORTED_INTERVAL: Duration = Duration::from_secs(300);
 /// A paused watch waits for the user.
 const PAUSED: Duration = Duration::from_secs(24 * 3600);
-/// How much of the past the cards draw.
-pub const HISTORY: Duration = Duration::from_secs(30 * 60);
+/// Between two savings of the history of a server.
+const SAVE_EVERY: Duration = Duration::from_secs(5 * 60);
 /// Alerts kept in the journal of the dashboard.
 const JOURNAL: usize = 200;
 /// The dashboard counts as shown this long after a frame drew it.
@@ -106,6 +108,8 @@ pub struct MonitorSettings {
     pub background: bool,
     /// Seconds between two readings while the dashboard is not on screen.
     pub interval: u32,
+    /// The view of the dashboard and what its cards show.
+    pub dashboard: dashboard::DashboardPrefs,
 }
 
 impl Default for MonitorSettings {
@@ -117,6 +121,7 @@ impl Default for MonitorSettings {
             delivery: Delivery::default(),
             background: false,
             interval: 30,
+            dashboard: dashboard::DashboardPrefs::default(),
         }
     }
 }
@@ -146,19 +151,12 @@ impl MonitorSettings {
     }
 }
 
-/// A moment of a server, for the curves of its card. Shares from 0 to 1.
-#[derive(Clone, Copy, Debug)]
-pub struct Point {
-    pub at: Instant,
-    pub cpu: Option<f32>,
-    pub memory: Option<f32>,
-}
-
 /// What a watched server looks like now.
 #[derive(Default)]
 pub struct HostState {
     pub view: View,
-    pub history: VecDeque<Point>,
+    /// What it did: the last half hour, day and week.
+    pub history: history::History,
     /// The alerts under way, the most serious first.
     pub alerts: Vec<(Metric, Active)>,
     /// When it was last read.
@@ -510,6 +508,17 @@ impl Monitor {
         counts
     }
 
+    /// Scripts only: a made-up week behind this server, to look at the
+    /// longer spans of the charts without waiting for them.
+    pub fn simulate_history(&self, id: &str, seed: u64) {
+        if let Some(watch) = self.watches.get(id) {
+            let mut state = lock(&watch.host.state);
+            let disks = state.view.sample.as_ref().map(|sample| sample.disks.clone()).unwrap_or_default();
+            state.history = history::History::default();
+            state.history.simulate(history::now(), seed, &disks);
+        }
+    }
+
     /// Scripts only: an alert as a server would raise it, to see how it is
     /// told without waiting for a disk to fill.
     pub fn simulate(&self, id: &str, change: Change) {
@@ -547,6 +556,10 @@ async fn watch(settings: Arc<SshSettings>, host: Arc<Host>, hub: Arc<Hub>, mut s
     let mut tracker = Tracker::default();
     let mut failures = 0u32;
     let mut delay = Duration::ZERO;
+    let id = host.id.clone();
+    let loaded = tokio::task::spawn_blocking(move || history::load(&id, history::now())).await.unwrap_or_default();
+    lock(&host.state).history = loaded;
+    let mut saved_at = Instant::now();
     loop {
         tokio::select! {
             _ = &mut stop => break,
@@ -561,75 +574,97 @@ async fn watch(settings: Arc<SshSettings>, host: Arc<Host>, hub: Arc<Hub>, mut s
         let rules = host.rules();
         let reading = read(&settings, &mut connection).await;
         let now = Instant::now();
-        let mut state = lock(&host.state);
-        let mut happenings = Vec::new();
-        match reading {
-            Ok(output) => {
-                failures = 0;
-                let sample = stats::parse(&output);
-                state.view.update(sample.clone(), previous.as_ref(), now);
-                state.read_at = Some(now);
-                if matches!(state.view.status, Status::Unsupported(_)) {
-                    tracker = Tracker::default();
-                    delay = UNSUPPORTED_INTERVAL;
-                } else {
-                    let figures = alerts::figures(&state.view);
-                    happenings.extend(tracker.reading(&rules, &figures, now).into_iter().map(Happening::Changed));
-                    remember(&mut state, now);
-                    delay = if previous.is_none() { FIRST_INTERVAL } else { hub.interval() };
+        // The lock ends with this block, before anything is awaited.
+        let happenings = {
+            let mut state = lock(&host.state);
+            let mut happenings = Vec::new();
+            match reading {
+                Ok(output) => {
+                    failures = 0;
+                    let sample = stats::parse(&output);
+                    state.view.update(sample.clone(), previous.as_ref(), now);
+                    state.read_at = Some(now);
+                    if matches!(state.view.status, Status::Unsupported(_)) {
+                        tracker = Tracker::default();
+                        delay = UNSUPPORTED_INTERVAL;
+                    } else {
+                        let figures = alerts::figures(&state.view);
+                        happenings.extend(tracker.reading(&rules, &figures, now).into_iter().map(Happening::Changed));
+                        remember(&mut state);
+                        delay = if previous.is_none() { FIRST_INTERVAL } else { hub.interval() };
+                    }
+                    previous = Some((sample, now));
                 }
-                previous = Some((sample, now));
+                Err(Failure::Unreachable(error)) => {
+                    failures += 1;
+                    previous = None;
+                    state.view.status = Status::Failed(format!("{error:#}"));
+                    happenings.extend(tracker.unreachable(&rules, now).map(Happening::Changed));
+                    let backoff = RETRY.saturating_mul(2u32.saturating_pow(failures.saturating_sub(1).min(8)));
+                    delay = backoff.min(MAX_RETRY).min(hub.interval().max(RETRY));
+                }
+                Err(Failure::Refused(error)) => {
+                    previous = None;
+                    let text = format!("{error:#}");
+                    state.view.status = Status::Failed(text.clone());
+                    state.paused = Some(text.clone());
+                    happenings.push(Happening::Refused(text));
+                    delay = PAUSED;
+                }
             }
-            Err(Failure::Unreachable(error)) => {
-                failures += 1;
-                previous = None;
-                state.view.status = Status::Failed(format!("{error:#}"));
-                happenings.extend(tracker.unreachable(&rules, now).map(Happening::Changed));
-                let backoff = RETRY.saturating_mul(2u32.saturating_pow(failures.saturating_sub(1).min(8)));
-                delay = backoff.min(MAX_RETRY).min(hub.interval().max(RETRY));
+            if connection.as_ref().is_some_and(|handle| handle.is_closed()) {
+                connection = None;
             }
-            Err(Failure::Refused(error)) => {
-                previous = None;
-                let text = format!("{error:#}");
-                state.view.status = Status::Failed(text.clone());
-                state.paused = Some(text.clone());
-                happenings.push(Happening::Refused(text));
-                delay = PAUSED;
-            }
-        }
-        if connection.as_ref().is_some_and(|handle| handle.is_closed()) {
-            connection = None;
-        }
-        state.alerts = tracker.active();
-        state.unreachable_since = tracker.unreachable_since();
-        drop(state);
+            state.alerts = tracker.active();
+            state.unreachable_since = tracker.unreachable_since();
+            happenings
+        };
         for happening in happenings {
             hub.report(&host, happening);
         }
         hub.ctx.request_repaint();
+        if saved_at.elapsed() >= SAVE_EVERY {
+            saved_at = Instant::now();
+            save(&host).await;
+        }
     }
+    save(&host).await;
     if let Some(handle) = connection {
         let _ = handle.disconnect(Disconnect::ByApplication, "", "en").await;
     }
 }
 
-/// Adds the figures just read to the curves, and forgets the oldest.
-fn remember(state: &mut HostState, now: Instant) {
-    let memory = state
-        .view
-        .sample
-        .as_ref()
-        .and_then(|sample| sample.memory)
-        .filter(|memory| memory.total > 0)
-        .map(|memory| memory.used() as f32 / memory.total as f32);
-    state.history.push_back(Point {
-        at: now,
+/// Writes the history of a server, off the threads of the tasks. Not worth
+/// a word when it fails: the next time tries again.
+async fn save(host: &Host) {
+    let Some(bytes) = history::serialize(&lock(&host.state).history) else {
+        return;
+    };
+    let id = host.id.clone();
+    let _ = tokio::task::spawn_blocking(move || history::write(&id, &bytes)).await;
+}
+
+/// Adds the figures just read to the history.
+fn remember(state: &mut HostState) {
+    let Some(sample) = state.view.sample.as_ref() else {
+        return;
+    };
+    let memory = sample.memory.filter(|memory| memory.total > 0);
+    let load = match (sample.load, sample.cores.filter(|cores| *cores > 0)) {
+        (Some([_, five, _]), Some(cores)) => Some((five / f64::from(cores)) as f32),
+        _ => None,
+    };
+    let point = history::Point {
+        at: history::now(),
         cpu: state.view.cpu,
-        memory,
-    });
-    while state.history.front().is_some_and(|point| now.duration_since(point.at) > HISTORY) {
-        state.history.pop_front();
-    }
+        memory: memory.map(|memory| memory.used() as f32 / memory.total as f32),
+        disk: stats::fullest(&sample.disks).map(|disk| disk.fraction()),
+        load,
+        rx: state.view.network.map(|(received, _)| received as f32),
+        tx: state.view.network.map(|(_, sent)| sent as f32),
+    };
+    let disks = sample.disks.clone();
+    state.history.add(point, &disks);
 }
 
 /// Runs the script, connecting and logging in first when needed.
@@ -753,7 +788,7 @@ mod tests {
         loop {
             monitor.mark_seen();
             alerts.extend(monitor.take_alerts());
-            let good = monitor.host("good").unwrap().read(|state| state.view.cpu.is_some() && state.history.len() >= 2);
+            let good = monitor.host("good").unwrap().read(|state| state.view.cpu.is_some() && state.history.recent().len() >= 2);
             let paused = monitor.host("wrong").unwrap().read(|state| state.paused.is_some());
             if (good && paused) || Instant::now() > deadline {
                 break;
@@ -764,7 +799,9 @@ mod tests {
         good.read(|state| {
             assert_eq!(state.view.status, Status::Ready);
             assert!(state.view.cpu.is_some(), "two readings compared");
-            assert!(state.history.len() >= 2);
+            assert!(state.history.recent().len() >= 2);
+            let last = state.history.recent().back().unwrap();
+            assert!(last.cpu.is_some() && last.memory.is_some() && last.disk.is_some() && last.rx.is_some());
             assert!(matches!(state.alerts.first(), Some((Metric::Disk(_), Active { level: Level::Warning, .. }))));
         });
         assert!(alerts.iter().any(|alert| alert.profile_id == "good" && alert.told), "{alerts:?}");

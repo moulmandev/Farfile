@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
@@ -17,6 +17,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 
+use super::ops::{FolderSize, Tally};
 use super::ssh::{self, DEFAULT_PORT, SshHandle, SshSettings};
 use super::{
     DeepFile, Entry, EntryKind, Found, FoundSink, ListPage, Progress, RemotePath, Storage, TreeProgress, TreeReport,
@@ -39,6 +40,23 @@ const COUNT_TIMEOUT: Duration = Duration::from_secs(60);
 /// elsewhere. `find` gets `./$2`: a bare name starting with `-` would be
 /// read as part of its expression, and `-delete` is one.
 const COUNT_SCRIPT: &str = r#"cd -- "$1" || exit 3; if find . -maxdepth 0 -printf '' >/dev/null 2>&1; then find "./$2" -type f -printf '%s\n'; else find "./$2" -type f -exec ls -ln {} + | awk '{print $5}'; fi | awk '{n++; s+=$1} END {printf "%d %.0f\n", n, s}'"#;
+
+/// Counts what the folder `$2` of `$1` holds, on the server, and prints
+/// `files folders bytes unreadable`: what `du` would tell, in one command
+/// instead of a listing per folder. Needs GNU find (exit 4 without it);
+/// `$2` itself must be readable (exit 5), the listings then tell why not.
+/// `-H` enters `$2` when it is a link, as the listings do. Its complaints,
+/// one per folder it may not read, go to `wc` through descriptor 3 while
+/// what it found goes to `awk`: mixing the two in one pipe could cut lines.
+const SIZE_SCRIPT: &str = r#"cd -- "$1" || exit 3; find . -maxdepth 0 -printf '' >/dev/null 2>&1 || exit 4; [ -r "./$2" ] && [ -x "./$2" ] || exit 5; { find -H "./$2" -mindepth 1 -printf '%Y %s\n' 2>&1 1>&3 | wc -l; } 3>&1 | awk 'NF == 1 {e = $1; next} $1 == "d" {d++; next} {n++; s += $2} END {printf "%.0f %.0f %.0f %.0f\n", n, d, s, e}'"#;
+
+/// Removes the folder `$2` of `$1` with all it holds, on the server, and
+/// prints how many entries went, counted first. `rm` never follows links:
+/// a linked folder loses its link, what it points to stays. A name that
+/// could reach the folder above (`.`, `..`) is refused (exit 2), as is
+/// one that is not there (exit 4). Exit 1: `rm` could not remove it all.
+const REMOVE_SCRIPT: &str = r#"case "$2" in ''|.|..|*/*) exit 2;; esac; cd -- "$1" || exit 3; [ -e "./$2" ] || [ -L "./$2" ] || exit 4; n=$(find "./$2" 2>/dev/null | wc -l); rm -rf -- "./$2" || exit 1; echo "s3viewer-removed:$n""#;
+const REMOVED: &str = "s3viewer-removed:";
 
 /// Sends the folder `$2` of `$1` as one tar stream, compressed when the
 /// server has gzip. Behind gzip, the exit status of tar is told on the
@@ -110,23 +128,89 @@ fn script(script: &str, dir: &str, name: &str) -> String {
     format!("sh -c {} sh {} {}", shell_quote(script), shell_quote(dir), shell_quote(name))
 }
 
-/// Runs `command` on the server for what it prints and its exit status.
-/// `None` when the account may not run commands.
-async fn run(handle: &ssh::SshHandle, command: String) -> Option<(Vec<u8>, Option<u32>)> {
+/// What a command printed on each output, and its exit status.
+struct Ran {
+    out: Vec<u8>,
+    err: Vec<u8>,
+    status: Option<u32>,
+}
+
+impl Ran {
+    /// The first thing it complained about, if anything.
+    fn complaint(&self) -> Option<String> {
+        let err = String::from_utf8_lossy(&self.err);
+        err.lines().map(str::trim).find(|line| !line.is_empty()).map(str::to_owned)
+    }
+}
+
+/// Runs `command` on the server. `None` when the account may not run
+/// commands. Nothing is ever written to its input, which is closed at
+/// once, as for `cp`: where a server starts its SFTP service in place of
+/// the command, that then stops instead of waiting for requests.
+async fn run(handle: &ssh::SshHandle, command: String) -> Option<Ran> {
     let mut channel = handle.channel_open_session().await.ok()?;
     channel.exec(true, command).await.ok()?;
-    let mut output = Vec::new();
-    let mut status = None;
+    let _ = channel.eof().await;
+    let mut ran = Ran {
+        out: Vec::new(),
+        err: Vec::new(),
+        status: None,
+    };
     while let Some(message) = channel.wait().await {
         match message {
-            ChannelMsg::Data { data } => output.extend_from_slice(&data),
-            ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+            ChannelMsg::Data { data } => ran.out.extend_from_slice(&data),
+            ChannelMsg::ExtendedData { data, .. } => ran.err.extend_from_slice(&data),
+            ChannelMsg::ExitStatus { exit_status } => ran.status = Some(exit_status),
             ChannelMsg::Failure => return None,
             ChannelMsg::Close => break,
             _ => {}
         }
     }
-    Some((output, status))
+    Some(ran)
+}
+
+/// Removes the folder `path` and all it holds, one request per entry.
+/// Links are removed, never followed, `path` itself included: a linked
+/// folder loses its link, what it points to stays.
+async fn remove_through_sftp(live: &Live, path: &RemotePath) -> Result<u64> {
+    let root = path.to_string();
+    if live.sftp.symlink_metadata(root.as_str()).await?.file_type().is_symlink() {
+        live.sftp.remove_file(root).await?;
+        return Ok(1);
+    }
+    let mut removed = 0;
+    let mut folders = Vec::new();
+    let mut pending = vec![root];
+    while let Some(dir) = pending.pop() {
+        for item in live.sftp.read_dir(dir.as_str()).await? {
+            let child = join(&dir, &item.file_name());
+            if item.metadata().is_dir() {
+                pending.push(child);
+            } else {
+                live.sftp.remove_file(child).await?;
+                removed += 1;
+            }
+        }
+        folders.push(dir);
+    }
+    // Parents were found before their children: empty them deepest first.
+    for dir in folders.into_iter().rev() {
+        live.sftp.remove_dir(dir).await?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+/// The last line of [`SIZE_SCRIPT`]: `files folders bytes unreadable`.
+fn parse_size(output: &str) -> Option<FolderSize> {
+    let mut numbers = output.lines().last()?.split_whitespace().map(str::parse::<u64>);
+    let mut next = || numbers.next()?.ok();
+    Some(FolderSize {
+        files: next()?,
+        folders: next()?,
+        bytes: next()?,
+        unreadable: next()?,
+    })
 }
 
 /// Hands what a command prints to `sender`, and returns its error output
@@ -185,6 +269,52 @@ fn join(dir: &str, name: &str) -> String {
         format!("{dir}{name}")
     } else {
         format!("{dir}/{name}")
+    }
+}
+
+impl SftpStorage {
+    /// What `path` holds, counted on the server with [`SIZE_SCRIPT`].
+    /// `None` when the account may not run commands, the server has no GNU
+    /// find, or the count was stopped.
+    async fn count_on_server(&self, path: &RemotePath, tally: &Tally) -> Option<FolderSize> {
+        let parent = path.parent()?;
+        let live = self.session().await.ok()?;
+        let counting = run(&live.handle, script(SIZE_SCRIPT, &parent.to_string(), path.name()));
+        let stopped = async {
+            while !tally.is_cancelled() {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        };
+        let ran = tokio::select! {
+            counted = counting => counted?,
+            () = stopped => return None,
+        };
+        if ran.status != Some(0) {
+            return None;
+        }
+        parse_size(&String::from_utf8_lossy(&ran.out))
+    }
+
+    /// Removes the folder `path` and all it holds with `rm -rf` on the
+    /// server: one command where SFTP takes a request per file. Returns how
+    /// many entries went. `None` when the server cannot run it: the caller
+    /// then removes them one by one.
+    async fn remove_on_server(&self, live: &Live, path: &RemotePath) -> Result<Option<u64>> {
+        let parent = path.parent().context(tr!("chemin invalide"))?;
+        let Some(ran) = run(&live.handle, script(REMOVE_SCRIPT, &parent.to_string(), path.name())).await else {
+            return Ok(None);
+        };
+        let out = String::from_utf8_lossy(&ran.out);
+        if let Some(count) = out.lines().find_map(|line| line.strip_prefix(REMOVED)) {
+            return Ok(Some(count.trim().parse().unwrap_or(0)));
+        }
+        match (ran.status, ran.complaint()) {
+            // `rm` ran and refused part of it, for lack of rights say.
+            (Some(1), Some(complaint)) => bail!("{complaint}"),
+            // No shell, no `rm`, a name it refused, or nothing there: the
+            // SFTP way tells it in its own words.
+            _ => Ok(None),
+        }
     }
 }
 
@@ -340,7 +470,12 @@ impl Storage for SftpStorage {
 
         // What to expect, for the progress. No count, no commands here.
         let counted = tokio::time::timeout(COUNT_TIMEOUT, run(&live.handle, script(COUNT_SCRIPT, &dir, name))).await;
-        let Ok(Some((output, Some(0)))) = counted else {
+        let Ok(Some(Ran {
+            out: output,
+            status: Some(0),
+            ..
+        })) = counted
+        else {
             return Ok(None);
         };
         let output = String::from_utf8_lossy(&output);
@@ -417,35 +552,18 @@ impl Storage for SftpStorage {
         sent
     }
 
+    /// A folder goes with `rm -rf` on the server when it lets commands run,
+    /// request by request through SFTP otherwise.
     async fn delete(&self, path: &RemotePath, is_dir: bool) -> Result<u64> {
         let live = self.session().await?;
         if !is_dir {
             live.sftp.remove_file(path.to_string()).await?;
             return Ok(1);
         }
-
-        let mut removed = 0;
-        let mut folders = Vec::new();
-        let mut pending = vec![path.to_string()];
-        while let Some(dir) = pending.pop() {
-            for item in live.sftp.read_dir(dir.as_str()).await? {
-                let child = join(&dir, &item.file_name());
-                // Links are removed, never followed.
-                if item.metadata().is_dir() {
-                    pending.push(child);
-                } else {
-                    live.sftp.remove_file(child).await?;
-                    removed += 1;
-                }
-            }
-            folders.push(dir);
+        if let Some(removed) = self.remove_on_server(&live, path).await? {
+            return Ok(removed);
         }
-        // Parents were found before their children: empty them deepest first.
-        for dir in folders.into_iter().rev() {
-            live.sftp.remove_dir(dir).await?;
-            removed += 1;
-        }
-        Ok(removed)
+        remove_through_sftp(&live, path).await
     }
 
     async fn create_folder(&self, path: &RemotePath) -> Result<()> {
@@ -519,6 +637,19 @@ impl Storage for SftpStorage {
 
     async fn properties(&self, path: &RemotePath, _is_dir: bool) -> Result<super::ops::Properties> {
         self.stat_entry(path).await
+    }
+
+    /// Counted by the server when it lets commands run: one round trip
+    /// where a walk takes one per folder. Through the listings otherwise.
+    async fn folder_size(&self, path: &RemotePath, tally: &Tally) -> Result<()> {
+        if let Some(size) = self.count_on_server(path, tally).await {
+            tally.add(size);
+            return Ok(());
+        }
+        if tally.is_cancelled() {
+            bail!(tr!("annulé"));
+        }
+        super::ops::walk_size(self, path, tally).await
     }
 
     /// The new content goes to a hidden file next to the old one, which it
@@ -705,7 +836,7 @@ mod tests {
             r#"sh -c 'run "$1" "$2"' sh '/srv/@NAME@' '-delete'"#
         );
         assert_eq!(script("x", "/a'b", "$(touch pwned)"), r#"sh -c 'x' sh '/a'\''b' '$(touch pwned)'"#);
-        for template in [COUNT_SCRIPT, TAR_SCRIPT] {
+        for template in [COUNT_SCRIPT, TAR_SCRIPT, SIZE_SCRIPT] {
             assert!(!template.contains("@NAME@") && !template.contains("@DIR@"));
             // find and tar are never handed a bare name, which could read
             // as one of their options.
@@ -714,6 +845,72 @@ mod tests {
         }
         assert_eq!(COUNT_SCRIPT.matches("find \"./$2\"").count(), 2);
         assert_eq!(TAR_SCRIPT.matches("tar -cf - -- \"./$2\"").count(), 2);
+        assert_eq!(SIZE_SCRIPT.matches("find -H \"./$2\"").count(), 1);
+        // The bare name only ever goes to `case`, which refuses those that
+        // reach above the folder; `rm` and `find` get `./$2`.
+        assert!(REMOVE_SCRIPT.starts_with(r#"case "$2" in ''|.|..|*/*) exit 2;; esac; cd -- "$1""#));
+        assert_eq!(REMOVE_SCRIPT.matches("\"$2\"").count(), 1);
+        assert!(REMOVE_SCRIPT.contains(r#"rm -rf -- "./$2" || exit 1"#));
+    }
+
+    /// Both ways of removing a folder: `rm -rf` on the server, and one
+    /// request per entry where commands cannot run. A linked folder loses
+    /// its link only.
+    #[tokio::test]
+    async fn live_folders_are_removed_and_links_not_followed() {
+        let Some(storage) = crate::storage::ops_live_tests::sftp() else {
+            return;
+        };
+        let home = storage.home().await.expect("home");
+        let base = home.child(&format!("remove-test-{}", crate::storage::ops_live_tests::stamp()));
+        let local = std::env::temp_dir().join(format!("s3v-remove-{}", crate::storage::ops_live_tests::stamp()));
+        std::fs::write(&local, b"x").unwrap();
+        let live = storage.session().await.unwrap();
+        for on_server in [true, false] {
+            for file in ["tree/a/x.txt", "tree/b/y.txt", "kept/z.txt"] {
+                storage.upload(&local, &base.child(file), &Progress::default()).await.expect("upload");
+            }
+            storage.make_link(&base.child("link"), "kept").await.expect("symlink");
+            let remove = |path: RemotePath| {
+                let (storage, live) = (&storage, live.clone());
+                async move {
+                    if on_server {
+                        storage.remove_on_server(&live, &path).await.unwrap().expect("rm runs")
+                    } else {
+                        remove_through_sftp(&live, &path).await.unwrap()
+                    }
+                }
+            };
+            assert_eq!(remove(base.child("link")).await, 1, "on server: {on_server}");
+            let names: Vec<String> = live.sftp.read_dir(base.to_string()).await.unwrap().map(|item| item.file_name()).collect();
+            assert!(!names.contains(&"link".to_owned()), "{names:?}");
+            assert!(live.sftp.metadata(base.child("kept/z.txt").to_string()).await.is_ok(), "the target stays");
+            assert_eq!(remove(base.child("tree")).await, 5, "tree, a, b, x.txt, y.txt");
+            assert!(live.sftp.metadata(base.child("tree").to_string()).await.is_err());
+            storage.delete(&base.child("kept"), true).await.expect("kept");
+        }
+        // Nothing there: the SFTP way says so.
+        assert!(storage.delete(&base.child("nothing"), true).await.is_err());
+        storage.delete(&base, true).await.expect("cleanup");
+        let _ = std::fs::remove_file(local);
+    }
+
+    #[test]
+    fn server_counts_are_read_from_the_last_line() {
+        let size = parse_size("1234 56 7890123456789 2\n").unwrap();
+        assert_eq!(
+            size,
+            FolderSize {
+                files: 1234,
+                folders: 56,
+                bytes: 7_890_123_456_789,
+                unreadable: 2
+            }
+        );
+        assert_eq!(parse_size("motd\n0 0 0 0\n").unwrap(), FolderSize::default());
+        assert_eq!(parse_size("1 2 3\n"), None, "a figure is missing");
+        assert_eq!(parse_size("1 2 3.5 0\n"), None);
+        assert_eq!(parse_size(""), None);
     }
 
     #[test]

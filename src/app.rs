@@ -2487,7 +2487,8 @@ impl App {
                     settings: &self.settings.monitor,
                     profiles: &self.profiles,
                 };
-                ui.push_id(tab.id, |ui| crate::ui::monitor::show(ui, &p, &dashboard, actions));
+                let state = &mut self.monitor.dash;
+                ui.push_id(tab.id, |ui| crate::ui::monitor::show(ui, &p, &dashboard, state, actions));
             } else {
                 // Each tab keeps its own scroll positions and the like.
                 ui.push_id(tab.id, |ui| tab_content(ui, &p, tab, interactive, editor, incoming, actions));

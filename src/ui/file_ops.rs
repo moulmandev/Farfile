@@ -17,8 +17,8 @@ use super::Action;
 use super::dialogs::Outcome;
 use super::widgets::{checkbox, danger_button, drag_label, dropped, icon, icon_button, muted, primary_button, small};
 use crate::file_ops::{
-    Dragged, Existing, OpsState, Owner, Picked, Plan, Scope, Sizing, bookmark_of, describe, permissions_label, refuse,
-    resolve_path, stem,
+    Dragged, Existing, OpsState, Owner, Picked, Plan, Scope, SizeNote, Sizing, bookmark_of, describe, permissions_label,
+    refuse, resolve_path, stem,
 };
 use crate::format;
 use crate::session::Session;
@@ -35,6 +35,9 @@ const OWNER_WIDTH: f32 = 140.0;
 const EXTRA_BELOW: f32 = 600.0;
 /// Operations quicker than this never show in the status bar.
 const SHOW_AFTER: f64 = 0.4;
+/// Room the folder sizes button needs left to show its words: theirs, and
+/// the buttons that come after it in the bar.
+const SIZES_WORDS_ABOVE: f32 = 250.0;
 
 /// What the user asks of the file operations, applied by the app.
 pub enum OpsAction {
@@ -55,6 +58,10 @@ pub enum OpsAction {
     AskPermissions,
     Properties,
     ComputeSize,
+    /// Count the size of every folder of the listing shown.
+    SizeAll,
+    /// Stop counting the sizes of the folders of the listing shown.
+    StopSizes,
     CancelJob(u64),
     /// Stop counting the size of this folder of this connection.
     CancelSize(usize, RemotePath),
@@ -292,6 +299,7 @@ pub fn toolbar(ui: &mut Ui, p: &Palette, session: &Session, compact: bool, actio
         .button(caption(icon::BOOKMARKS_SIMPLE, tr!("Signets")))
         .on_hover_text(tr!("Les dossiers gardés pour cette connexion"));
     Popup::menu(&button).show(|ui| bookmarks_menu(ui, p, session, actions));
+    sizes_button(ui, session, compact, actions);
 
     if let Some(clipboard) = session.file_ops.clipboard.filter(|clipboard| clipboard.here)
         && session.writable()
@@ -308,6 +316,35 @@ pub fn toolbar(ui: &mut Ui, p: &Palette, session: &Session, compact: bool, actio
         {
             push(actions, OpsAction::Paste(None));
         }
+    }
+}
+
+/// Counts the size of every folder shown, in one click, or stops the
+/// count under way. Its words go before the bar runs out of room.
+fn sizes_button(ui: &mut Ui, session: &Session, compact: bool, actions: &mut Vec<Action>) {
+    if !session.writable() {
+        return;
+    }
+    let roomy = !compact && ui.available_width() > SIZES_WORDS_ABOVE;
+    let caption = |glyph: &str, text: &str| if roomy { format!("{glyph}  {text}") } else { glyph.to_owned() };
+    if !session.file_ops.sizing.is_empty() {
+        if ui
+            .button(caption(icon::STOP_CIRCLE, tr!("Arrêter")))
+            .on_hover_text(tr!("Arrêter le calcul des tailles"))
+            .clicked()
+        {
+            push(actions, OpsAction::StopSizes);
+        }
+        return;
+    }
+    let folders = session.rows().any(Entry::is_dir);
+    if ui
+        .add_enabled(folders, Button::new(caption(icon::CALCULATOR, tr!("Tailles des dossiers"))))
+        .on_hover_text(tr!("Calculer la taille de chaque dossier affiché"))
+        .on_disabled_hover_text(tr!("Aucun dossier ici"))
+        .clicked()
+    {
+        push(actions, OpsAction::SizeAll);
     }
 }
 
@@ -371,14 +408,36 @@ fn bookmarks_menu(ui: &mut Ui, p: &Palette, session: &Session, actions: &mut Vec
 }
 
 /// The size column: what was counted for a folder, with an ellipsis while
-/// the count goes on.
-pub fn size_text(session: &Session, entry: &Entry) -> String {
-    let text = entry.size.map(format::size).unwrap_or_else(|| "—".to_owned());
-    if entry.is_dir() && session.file_ops.sizing.contains(&entry.name) {
-        format!("{text}…")
-    } else {
-        text
+/// the count goes on, « ≥ » when folders below could not be read, and a
+/// warning when it could not be counted; pointing at it tells why.
+pub fn size_cell(ui: &mut Ui, p: &Palette, session: &Session, entry: &Entry) {
+    let state = &session.file_ops;
+    let note = if entry.is_dir() { state.size_notes.get(&entry.name) } else { None };
+    if let Some(SizeNote::Failed(error)) = note {
+        let text = RichText::new(format!("{}  —", icon::WARNING)).color(p.danger);
+        ui.add(Label::new(text).selectable(false)).on_hover_text(error);
+        return;
     }
+    let mut text = entry.size.map(format::size).unwrap_or_else(|| "—".to_owned());
+    if let Some(SizeNote::Partial(_)) = note {
+        text = format!("≥ {text}");
+    }
+    if entry.is_dir() && state.sizing.contains(&entry.name) {
+        text.push('…');
+    }
+    let label = ui.add(Label::new(muted(p, text)).selectable(false));
+    if let Some(SizeNote::Partial(unreadable)) = note {
+        label.on_hover_text(unreadable_text(*unreadable));
+    }
+}
+
+/// Why a size is only a minimum.
+fn unreadable_text(count: u64) -> String {
+    trn!(
+        count,
+        "{n} dossier n'a pas pu être lu : la taille réelle peut être plus grande.",
+        "{n} dossiers n'ont pas pu être lus : la taille réelle peut être plus grande."
+    )
 }
 
 /// The optional columns the table shows: those asked for, when the
@@ -502,31 +561,43 @@ pub fn status(ui: &mut Ui, p: &Palette, state: &OpsState, actions: &mut Vec<Acti
         ([], [((_, path), sizing)]) => {
             format!("{} · {}", tr!("Taille de « {name} »", name = path.name()), size_figures(sizing.tally.snapshot()))
         }
+        ([], many) => trn!(many.len(), "Taille de {n} dossier en cours", "Taille de {n} dossiers en cours"),
         _ => trn!(jobs.len() + sizes.len(), "{n} opération en cours", "{n} opérations en cours"),
     };
     let button = ui.add(Button::new(RichText::new(label).size(12.0).color(p.accent)).frame(false));
     ui.add(egui::Spinner::new().size(12.0).color(p.accent));
     Popup::menu(&button).show(|ui| {
         ui.set_min_width(360.0);
-        for job in &jobs {
-            let (done, total) = job.progress.snapshot();
-            let fraction = if total > 0 {
-                done as f32 / total as f32
-            } else {
-                let count = job.count.load(Ordering::Relaxed).max(1);
-                job.done.load(Ordering::Relaxed) as f32 / count as f32
-            };
-            if operation_row(ui, p, &job.label, &job_figures(job), Some(fraction.min(1.0))) {
-                push(actions, OpsAction::CancelJob(job.id));
-            }
-        }
-        for ((key, path), sizing) in &sizes {
-            let label = tr!("Taille de « {name} »", name = path.name());
-            if operation_row(ui, p, &label, &size_figures(sizing.tally.snapshot()), None) {
-                push(actions, OpsAction::CancelSize(*key, path.clone()));
-            }
-        }
+        // Every folder of a long listing may be counted at once.
+        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| operations_menu(ui, p, &jobs, &sizes, actions));
     });
+}
+
+fn operations_menu(
+    ui: &mut Ui,
+    p: &Palette,
+    jobs: &[&Arc<crate::file_ops::Job>],
+    sizes: &[(&(usize, RemotePath), &Arc<Sizing>)],
+    actions: &mut Vec<Action>,
+) {
+    for job in jobs {
+        let (done, total) = job.progress.snapshot();
+        let fraction = if total > 0 {
+            done as f32 / total as f32
+        } else {
+            let count = job.count.load(Ordering::Relaxed).max(1);
+            job.done.load(Ordering::Relaxed) as f32 / count as f32
+        };
+        if operation_row(ui, p, &job.label, &job_figures(job), Some(fraction.min(1.0))) {
+            push(actions, OpsAction::CancelJob(job.id));
+        }
+    }
+    for ((key, path), sizing) in sizes {
+        let label = tr!("Taille de « {name} »", name = path.name());
+        if operation_row(ui, p, &label, &size_figures(sizing.tally.snapshot()), None) {
+            push(actions, OpsAction::CancelSize(*key, path.clone()));
+        }
+    }
 }
 
 /// One operation in the menu of the status bar. Returns true to stop it.
@@ -1256,7 +1327,7 @@ fn folder_size_row(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, extra_fi
             if ui.button(format!("{}  {}", icon::CALCULATOR, tr!("Calculer la taille"))).clicked() {
                 view.wants_size = true;
             }
-            if let Some(error) = counted.iter().find_map(|sizing| sizing.error.lock().ok().and_then(|e| e.clone())) {
+            if let Some(error) = counted.iter().find_map(|sizing| sizing.error()) {
                 ui.label(RichText::new(error).size(12.0).color(p.danger));
             }
             return;
@@ -1267,12 +1338,21 @@ fn folder_size_row(ui: &mut Ui, p: &Palette, view: &mut PropertiesView, extra_fi
             total.files += size.files;
             total.folders += size.folders;
             total.bytes += size.bytes;
+            total.unreadable += size.unreadable;
         }
         total.files += extra_files;
         if view.items.len() > 1 {
             total.folders += folders as u64;
         }
-        ui.label(RichText::new(folder_summary(total)).color(p.text));
+        let summary = folder_summary(total);
+        if total.unreadable > 0 {
+            ui.label(RichText::new(format!("≥ {summary}")).color(p.text))
+                .on_hover_text(unreadable_text(total.unreadable));
+            ui.label(RichText::new(icon::WARNING).color(p.danger))
+                .on_hover_text(unreadable_text(total.unreadable));
+        } else {
+            ui.label(RichText::new(summary).color(p.text));
+        }
         if counted.iter().any(|sizing| sizing.is_running()) {
             ui.add(egui::Spinner::new().size(13.0).color(p.muted));
             if ui.small_button(tr!("Arrêter")).clicked() {

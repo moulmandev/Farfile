@@ -17,6 +17,8 @@ use crate::storage::{Entry, Progress, RemotePath, Storage, storage_key};
 
 /// Entries changed at the same time by a recursive change of permissions.
 const PARALLEL_CHANGES: usize = 8;
+/// Folders whose size is counted at the same time; the others wait.
+const PARALLEL_SIZES: usize = 4;
 
 /// A folder of a connection kept at hand, saved with the connection.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +122,8 @@ pub struct SessionOps {
     pub select_after: Option<(RemotePath, Vec<String>)>,
     /// Folders whose size is being counted, by name in the current folder.
     pub sizing: HashSet<String>,
+    /// What to know about the sizes counted in the current folder, by name.
+    pub size_notes: HashMap<String, SizeNote>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -341,16 +345,50 @@ pub struct Sizing {
     pub finished: AtomicBool,
     pub error: Mutex<Option<String>>,
     pub started: f64,
+    /// Counted with every folder of a listing: a failure shows on its row
+    /// rather than as a message of its own.
+    pub quiet: bool,
 }
 
 impl Sizing {
+    pub fn new(started: f64, quiet: bool) -> Self {
+        Self {
+            tally: Tally::default(),
+            finished: AtomicBool::new(false),
+            error: Mutex::new(None),
+            started,
+            quiet,
+        }
+    }
+
     pub fn is_running(&self) -> bool {
         !self.finished.load(Ordering::Relaxed)
     }
 
     pub fn failed(&self) -> bool {
-        self.error.lock().map(|error| error.is_some()).unwrap_or(false)
+        self.error().is_some()
     }
+
+    pub fn error(&self) -> Option<String> {
+        self.error.lock().ok().and_then(|error| error.clone())
+    }
+
+    /// What the size column shows: nothing until something is counted,
+    /// then the bytes so far, and nothing after a failure.
+    pub fn shown(&self) -> Option<u64> {
+        let size = self.tally.snapshot();
+        let started = size.files + size.folders + size.unreadable > 0;
+        (!self.failed() && (started || !self.is_running())).then_some(size.bytes)
+    }
+}
+
+/// How a counted size of the listing is to be read, beside its figure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SizeNote {
+    /// This many folders below could not be read: the size is a minimum.
+    Partial(u64),
+    /// Not counted, for this reason.
+    Failed(String),
 }
 
 /// What the jobs tell the app.
@@ -816,8 +854,21 @@ pub async fn run_accounts(storage: Arc<dyn Storage>, reply: Reply) {
     });
 }
 
+/// Counts the size of each folder, a few at a time: a whole listing at
+/// once would flood the server.
+pub async fn run_sizes(storage: Arc<dyn Storage>, folders: Vec<(RemotePath, Arc<Sizing>)>, reply: Reply) {
+    stream::iter(folders)
+        .for_each_concurrent(PARALLEL_SIZES, |(path, sizing)| run_size(storage.clone(), path, sizing, reply.clone()))
+        .await;
+}
+
 pub async fn run_size(storage: Arc<dyn Storage>, path: RemotePath, sizing: Arc<Sizing>, reply: Reply) {
-    let result = storage.folder_size(&path, &sizing.tally).await;
+    // Stopped while waiting for its turn.
+    let result = if sizing.tally.is_cancelled() {
+        Err(anyhow::anyhow!("annulé"))
+    } else {
+        storage.folder_size(&path, &sizing.tally).await
+    };
     let error = match result {
         Ok(()) => None,
         Err(_) if sizing.tally.is_cancelled() => Some("annulé".to_owned()),
@@ -827,6 +878,7 @@ pub async fn run_size(storage: Arc<dyn Storage>, path: RemotePath, sizing: Arc<S
         slot.clone_from(&error);
     }
     sizing.finished.store(true, Ordering::Relaxed);
+    let error = error.filter(|_| !sizing.quiet);
     reply.send(OpsEvent::Sized { error });
 }
 
@@ -1053,16 +1105,26 @@ mod tests {
         assert!(!error, "{notice}");
         assert!(modes(&*storage, &base.child("new/place")).await.contains_key("z.txt"));
 
-        let sizing = Arc::new(Sizing {
-            tally: Tally::default(),
-            finished: AtomicBool::new(false),
-            error: Mutex::new(None),
-            started: 0.0,
-        });
+        let sizing = Arc::new(Sizing::new(0.0, false));
         run_size(storage.clone(), base.clone(), sizing.clone(), reply.clone()).await;
         let size = sizing.tally.snapshot();
         assert_eq!((size.files, size.bytes), (4, 40));
         assert!(!sizing.is_running() && !sizing.failed());
+
+        // Every folder of a listing at once, one of them stopped before
+        // its turn came.
+        let all: Vec<_> = ["d", "new"].iter().map(|name| (base.child(name), Arc::new(Sizing::new(0.0, true)))).collect();
+        let stopped = (base.child("place"), Arc::new(Sizing::new(0.0, true)));
+        stopped.1.tally.cancel();
+        let mut folders = all.clone();
+        folders.push(stopped.clone());
+        run_sizes(storage.clone(), folders, reply.clone()).await;
+        for (path, sizing) in &all {
+            assert!(!sizing.is_running() && !sizing.failed(), "{path}: {:?}", sizing.error());
+            assert!(sizing.shown().is_some(), "{path}");
+        }
+        assert_eq!(stopped.1.error().as_deref(), Some("annulé"));
+        assert_eq!(stopped.1.shown(), None);
 
         storage.delete(&base, true).await.unwrap();
         let _ = std::fs::remove_file(local);
@@ -1088,12 +1150,11 @@ mod tests {
         let sized = |path: &str| {
             (
                 (7, RemotePath::parse(path)),
-                Arc::new(Sizing {
-                    tally: Tally::default(),
-                    finished: AtomicBool::new(true),
-                    error: Mutex::new(None),
-                    started: 0.0,
-                }),
+                {
+                    let sizing = Sizing::new(0.0, false);
+                    sizing.finished.store(true, Ordering::Relaxed);
+                    Arc::new(sizing)
+                },
             )
         };
         state.sizes.extend([sized("/a"), sized("/a/b"), sized("/a/b/c"), sized("/a/d"), sized("/e")]);

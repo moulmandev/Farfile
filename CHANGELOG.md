@@ -3,6 +3,29 @@
 Each release's section here becomes its notes on GitHub, and what the update
 dialog shows. Add a `## x.y.z` section before tagging `vx.y.z`.
 
+## 0.3.0
+
+- Monitoring: five views of the dashboard, chosen at its top and kept for
+  next time. Cards made of the widgets you pick, in the order and style you
+  pick (gauge, curve, ring, figure), with ready-made sets; a sortable list,
+  grouped by folder or state; a heat map of every server over time; every
+  server on the same chart, with a small chart each underneath; and a wall
+  of large tiles for a screen of its own, in full screen if wanted
+- A click on a server shows it in full: processor, memory, network and
+  load as charts with axes, every disk with when it will be full at the
+  pace it fills, and its alerts
+- Charts over 30 minutes, 6 hours, 24 hours or 7 days: what the watched
+  servers did is kept on disk, so it survives a restart
+- Folder sizes on demand: a button above the files measures every folder
+  shown, its size filling in as it comes, and can be stopped; a folder that
+  could not be read is said, as the real size may then be larger
+- Folders deleted over SFTP go in one command on the server (`rm -rf`)
+  instead of a request per file: a thousand files in a tenth of a second
+  rather than forty seconds on a distant server. Accounts limited to SFTP
+  still delete file by file
+- Fixed: deleting a link to a folder over SFTP emptied the folder it
+  points to. Now only the link goes
+
 ## 0.2.0
 
 - The interface speaks English, French, German and Spanish: the system's

@@ -19,6 +19,9 @@ use crate::ui::monitor::{MonitorAction, MonitorDialog, PickForm, Published, Sett
 
 pub(super) struct MonitorState {
     pub(super) monitor: Monitor,
+    /// What the dashboard remembers between frames: the server shown in
+    /// full, the panel of the widgets, the servers hidden from a chart.
+    pub(super) dash: crate::ui::monitor::DashState,
     /// The window's handle went to the notifications.
     window_known: bool,
     /// The icon of the notification area, while the window is closed to it.
@@ -38,6 +41,7 @@ impl MonitorState {
     pub(super) fn new(ctx: &egui::Context, settings: &monitor::MonitorSettings) -> Self {
         Self {
             monitor: Monitor::new(ctx, settings),
+            dash: Default::default(),
             window_known: false,
             #[cfg(windows)]
             tray: None,
@@ -173,6 +177,10 @@ impl App {
             }
             MonitorAction::Retry(id) => self.monitor.monitor.restart(&id),
             MonitorAction::ClearJournal => self.monitor.monitor.journal.clear(),
+            MonitorAction::Prefs(prefs) => {
+                self.settings.monitor.dashboard = *prefs;
+                self.save_settings();
+            }
         }
     }
 
@@ -329,6 +337,56 @@ impl App {
                 };
                 threshold.warning = value;
                 threshold.minutes = 0;
+            }
+            // `monitorview list`, `heat`, `charts`, `wall` or `cards`.
+            "monitorview" => {
+                use crate::monitor::dashboard::View;
+                let view = match argument {
+                    "list" => View::List,
+                    "heat" => View::Heat,
+                    "charts" => View::Charts,
+                    "wall" => View::Wall,
+                    _ => View::Cards,
+                };
+                self.settings.monitor.dashboard.view = view;
+                self.monitor.dash.detail = None;
+            }
+            // `monitorrange 30m`, `6h`, `24h` or `7d`; `monitormeasure cpu`,
+            // `memory`, `disk`, `load` or `network`.
+            "monitorrange" | "monitormeasure" => {
+                let prefs = &mut self.settings.monitor.dashboard;
+                let quoted = format!("\"{argument}\"");
+                if verb == "monitorrange" {
+                    if let Ok(range) = serde_json::from_str(&quoted) {
+                        prefs.range = range;
+                    }
+                } else if let Ok(measure) = serde_json::from_str(&quoted) {
+                    prefs.measure = measure;
+                }
+            }
+            "monitordetail" => self.monitor.dash.detail = named(self, argument),
+            "monitorcustomize" => self.monitor.dash.customizing = !self.monitor.dash.customizing,
+            // `monitorhistory NAME`: a made-up week behind it.
+            "monitorhistory" => {
+                if let Some(id) = named(self, argument) {
+                    let seed = id.bytes().map(u64::from).sum();
+                    self.monitor.monitor.simulate_history(&id, seed);
+                }
+            }
+            // `monitorstyle cpu ring`: a widget of the cards, in a style.
+            "monitorstyle" => {
+                let words: Vec<&str> = argument.split_whitespace().collect();
+                if let [widget, style] = words[..] {
+                    let parse = |word: &str| format!("\"{word}\"");
+                    if let (Ok(widget), Ok(style)) = (serde_json::from_str(&parse(widget)), serde_json::from_str(&parse(style))) {
+                        let prefs = &mut self.settings.monitor.dashboard;
+                        if let Some(slot) = prefs.slots.iter_mut().find(|slot| slot.widget == widget) {
+                            slot.style = style;
+                            slot.on = true;
+                        }
+                        prefs.normalize();
+                    }
+                }
             }
             "monitoralerts" => {
                 if let Some(Dialog::Monitor(MonitorDialog::Settings(form))) = &mut self.dialog {

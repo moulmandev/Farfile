@@ -398,8 +398,7 @@ fn table(
                 });
                 row.col(|ui| {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let text = file_ops::size_text(view, entry);
-                        ui.add(Label::new(muted(p, text)).selectable(false));
+                        file_ops::size_cell(ui, p, view, entry);
                     });
                 });
                 if dated {

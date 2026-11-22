@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::ftp::{FtpSettings, FtpStorage};
-use super::ops::{Tally, list_all, walk_tree};
+use super::ops::{Tally, list_all, walk_size, walk_tree};
 use super::sftp::SftpStorage;
 use super::ssh::SshSettings;
 use super::{Progress, RemotePath, Storage};
@@ -115,9 +115,32 @@ pub(super) async fn exercise(storage: &dyn Storage, base: &RemotePath) {
     assert_eq!(size.files, 5);
     assert_eq!(size.bytes, 2 * big.len() as u64 + 5 + 5 + 5);
     assert_eq!(size.folders, 5, "dir 2, other, other/inner, other copy, other copy/inner");
+    assert_eq!(size.unreadable, 0);
     let cancelled = Tally::default();
     cancelled.cancel();
     assert!(storage.folder_size(base, &cancelled).await.is_err());
+
+    // A folder below that may not be read is left out, as `du` does, and
+    // said so; the count goes on without it. Both ways of counting.
+    let locked = base.child("other/inner");
+    if ops.permissions {
+        storage.set_permissions(&locked, 0o000).await.expect("lock a folder");
+        // Unless the server runs as root, which reads anything.
+        if list_all(storage, &locked).await.is_err() {
+            let fast = Tally::default();
+            storage.folder_size(base, &fast).await.expect("size around a locked folder");
+            let walked = Tally::default();
+            walk_size(storage, base, &walked).await.expect("walk around a locked folder");
+            for size in [fast.snapshot(), walked.snapshot()] {
+                assert_eq!(size.files, 4, "c.txt of the locked folder is missing: {size:?}");
+                assert_eq!(size.bytes, 2 * big.len() as u64 + 5 + 5, "{size:?}");
+                assert_eq!(size.folders, 5, "{size:?}");
+                assert_eq!(size.unreadable, 1, "{size:?}");
+            }
+            // The folder asked for itself must be read.
+            assert!(storage.folder_size(&locked, &Tally::default()).await.is_err());        }
+        storage.set_permissions(&locked, 0o755).await.expect("unlock the folder");
+    }
 
     let properties = storage.properties(&base.child("b.bin"), false).await.expect("properties");
     if properties.size.is_some() {

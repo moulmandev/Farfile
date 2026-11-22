@@ -3,6 +3,7 @@
 //! [`Storage`] methods exchange, and the walks every backend can share.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::{Result, bail};
@@ -114,6 +115,9 @@ pub struct FolderSize {
     pub files: u64,
     pub folders: u64,
     pub bytes: u64,
+    /// Folders below that could not be read (not allowed, or gone): what
+    /// they hold is missing from the figures, which are then a minimum.
+    pub unreadable: u64,
 }
 
 /// A folder size being counted, shared between the worker and the UI.
@@ -122,6 +126,7 @@ pub struct Tally {
     files: AtomicU64,
     folders: AtomicU64,
     bytes: AtomicU64,
+    unreadable: AtomicU64,
     cancel: AtomicBool,
 }
 
@@ -133,6 +138,19 @@ impl Tally {
 
     pub fn add_folder(&self) {
         self.folders.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// A folder below was left out: it could not be read.
+    pub fn add_unreadable(&self) {
+        self.unreadable.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Figures counted all at once, as a server tells them.
+    pub fn add(&self, size: FolderSize) {
+        self.files.fetch_add(size.files, Ordering::Relaxed);
+        self.folders.fetch_add(size.folders, Ordering::Relaxed);
+        self.bytes.fetch_add(size.bytes, Ordering::Relaxed);
+        self.unreadable.fetch_add(size.unreadable, Ordering::Relaxed);
     }
 
     pub fn cancel(&self) {
@@ -148,8 +166,42 @@ impl Tally {
             files: self.files.load(Ordering::Relaxed),
             folders: self.folders.load(Ordering::Relaxed),
             bytes: self.bytes.load(Ordering::Relaxed),
+            unreadable: self.unreadable.load(Ordering::Relaxed),
         }
     }
+}
+
+/// A folder the server would not list, in the server's own words: not
+/// allowed, or no longer there. Backends whose library errors do not tell
+/// it by their type wrap them in this (see [`is_unreadable`]).
+#[derive(Debug)]
+pub struct Unreadable(pub String);
+
+impl fmt::Display for Unreadable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unreadable {}
+
+/// Whether listing a folder failed because of that folder alone (not
+/// allowed, or gone) rather than because of the connection: a count can
+/// then go on without it.
+pub fn is_unreadable(error: &anyhow::Error) -> bool {
+    use russh_sftp::client::error::Error as SftpError;
+    use russh_sftp::protocol::StatusCode;
+    error.chain().any(|cause| {
+        cause.is::<Unreadable>()
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| matches!(io.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound))
+            || matches!(
+                cause.downcast_ref::<SftpError>(),
+                Some(SftpError::Status(status))
+                    if matches!(status.status_code, StatusCode::PermissionDenied | StatusCode::NoSuchFile)
+            )
+    })
 }
 
 /// What a folder holds, at any depth, as paths relative to it.
@@ -175,10 +227,24 @@ pub async fn list_all<S: Storage + ?Sized>(storage: &S, path: &RemotePath) -> Re
     }
 }
 
+/// What a walk does with a folder below the root that cannot be read.
+enum OnUnreadable<'a> {
+    /// Fails the whole walk: a copy must not go on without part of it.
+    Fail,
+    /// Says so here and goes on without it: a count can.
+    Skip(&'a (dyn Fn() + Sync)),
+}
+
 /// Visits everything below `root`, a level at a time, with several folders
 /// listed at once. Linked folders are visited but not entered: they could
 /// loop, or lead far away.
-async fn walk<S, F>(storage: &S, root: &RemotePath, cancelled: &(dyn Fn() -> bool + Sync), mut visit: F) -> Result<()>
+async fn walk<S, F>(
+    storage: &S,
+    root: &RemotePath,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    on_unreadable: OnUnreadable<'_>,
+    mut visit: F,
+) -> Result<()>
 where
     S: Storage + ?Sized,
     F: FnMut(&str, &Entry) + Send,
@@ -188,14 +254,34 @@ where
         if cancelled() {
             bail!(tr!("annulé"));
         }
-        let listed: Vec<(String, Vec<Entry>)> = stream::iter(std::mem::take(&mut level))
+        let listings = stream::iter(std::mem::take(&mut level))
             .map(|relative| async move {
-                let entries = list_all(storage, &root.child(&relative)).await?;
-                Ok::<_, anyhow::Error>((relative, entries))
+                let entries = list_all(storage, &root.child(&relative)).await;
+                (relative, entries)
             })
-            .buffer_unordered(WALK_CONCURRENCY)
-            .try_collect()
-            .await?;
+            .buffer_unordered(WALK_CONCURRENCY);
+        let listed: Vec<(String, Vec<Entry>)> = match on_unreadable {
+            OnUnreadable::Fail => {
+                listings
+                    .map(|(relative, entries)| entries.map(|entries| (relative, entries)))
+                    .try_collect()
+                    .await?
+            }
+            OnUnreadable::Skip(skipped) => {
+                let mut listed = Vec::new();
+                let mut listings = std::pin::pin!(listings);
+                while let Some((relative, entries)) = listings.next().await {
+                    match entries {
+                        Ok(entries) => listed.push((relative, entries)),
+                        // The root itself must be read: there is nothing
+                        // to count otherwise.
+                        Err(error) if !relative.is_empty() && is_unreadable(&error) => skipped(),
+                        Err(error) => return Err(error),
+                    }
+                }
+                listed
+            }
+        };
         for (relative, entries) in listed {
             for entry in entries {
                 let child = if relative.is_empty() {
@@ -214,9 +300,11 @@ where
 }
 
 /// Counts what `path` holds through its listings: what a backend without a
-/// faster way does for [`Storage::folder_size`].
+/// faster way does for [`Storage::folder_size`]. Folders below that cannot
+/// be read are left out and counted apart, as `du` does.
 pub async fn walk_size<S: Storage + ?Sized>(storage: &S, path: &RemotePath, tally: &Tally) -> Result<()> {
-    walk(storage, path, &|| tally.is_cancelled(), |_, entry| {
+    let skipped = || tally.add_unreadable();
+    walk(storage, path, &|| tally.is_cancelled(), OnUnreadable::Skip(&skipped), |_, entry| {
         if entry.is_dir() {
             tally.add_folder();
         } else {
@@ -230,7 +318,7 @@ pub async fn walk_size<S: Storage + ?Sized>(storage: &S, path: &RemotePath, tall
 /// Linked folders are left out, linked files are kept.
 pub async fn walk_tree<S: Storage + ?Sized>(storage: &S, path: &RemotePath, progress: &Progress) -> Result<Tree> {
     let mut tree = Tree::default();
-    walk(storage, path, &|| progress.is_cancelled(), |relative, entry| {
+    walk(storage, path, &|| progress.is_cancelled(), OnUnreadable::Fail, |relative, entry| {
         if !entry.is_dir() {
             tree.files.push((relative.to_owned(), entry.size.unwrap_or(0)));
         } else if entry.link.is_none() {

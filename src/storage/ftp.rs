@@ -92,8 +92,14 @@ fn ftp_err(error: FtpError) -> anyhow::Error {
     match error {
         FtpError::UnexpectedResponse(response) => {
             let text = String::from_utf8_lossy(&response.body).trim().to_owned();
-            if text.is_empty() {
-                anyhow!(tr!("le serveur a refusé la commande ({status})", status = response.status))
+            let text = if text.is_empty() {
+                tr!("le serveur a refusé la commande ({status})", status = response.status)
+            } else {
+                text
+            };
+            // 550: that file or folder is not allowed, or not there.
+            if response.status == Status::FileUnavailable {
+                anyhow::Error::new(super::ops::Unreadable(text))
             } else {
                 anyhow!("{text}")
             }
