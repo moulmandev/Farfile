@@ -53,7 +53,9 @@ Service (GNOME Keyring, KWallet) to remember passwords.
   (processor, memory, disks, load, network and the last half hour), with
   alerts on thresholds you set, as messages, Windows notifications or a
   flashing taskbar button, and on servers that stop answering; closing the
-  window can keep watching from the notification area
+  window can keep watching from the notification area. Optionally, a tiny
+  cron script on a server keeps a week of its figures while Farfile is
+  closed, so that the charts have no gap
 - **SSH**: agents (Windows' OpenSSH agent, 1Password, Bitwarden, Pageant),
   key files, a keychain of identities shared by connections, keys made and
   installed on servers, jump hosts, port forwarding (`-L`, `-R`, `-D`)

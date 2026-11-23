@@ -15,7 +15,7 @@ use crate::session::Session;
 use crate::storage::ssh::SshSettings;
 use crate::tabs::{Side, Tab};
 use crate::ui::dialogs::Dialog;
-use crate::ui::monitor::{MonitorAction, MonitorDialog, PickForm, Published, SettingsForm, publish};
+use crate::ui::monitor::{CollectorForm, MonitorAction, MonitorDialog, PickForm, Published, SettingsForm, publish};
 
 pub(super) struct MonitorState {
     pub(super) monitor: Monitor,
@@ -143,6 +143,11 @@ impl App {
                 self.toast(now, text, alert.level() == Some(Level::Critical));
             }
         }
+        // How the jobs of the collectors ended.
+        for (text, failed) in self.monitor.monitor.take_notes() {
+            self.toast(now, text, failed);
+        }
+        self.refresh_collector_dialog();
         if notify::take_open_request() {
             self.open_dashboard();
         }
@@ -176,6 +181,14 @@ impl App {
                 }
             }
             MonitorAction::Retry(id) => self.monitor.monitor.restart(&id),
+            MonitorAction::Collector(id) => {
+                let Some(profile) = self.profiles.iter().find(|profile| profile.id == id) else {
+                    return;
+                };
+                let form = CollectorForm::new(&id, profile.title(), profile.user.trim());
+                self.open_dialog(Dialog::Monitor(MonitorDialog::Collector(Box::new(form))));
+                self.refresh_collector_dialog();
+            }
             MonitorAction::ClearJournal => self.monitor.monitor.journal.clear(),
             MonitorAction::Prefs(prefs) => {
                 self.settings.monitor.dashboard = *prefs;
@@ -202,7 +215,32 @@ impl App {
                 self.monitor.monitor.apply(&self.settings.monitor);
                 self.save_settings();
             }
+            MonitorDialog::Collector(form) => {
+                if let Some(job) = form.choice {
+                    self.monitor.monitor.collector(&form.id, job);
+                }
+            }
         }
+    }
+
+    /// The dialog of a collector follows what its watch learns.
+    fn refresh_collector_dialog(&mut self) {
+        let Some(Dialog::Monitor(MonitorDialog::Collector(form))) = &mut self.dialog else {
+            return;
+        };
+        let Some(host) = self.monitor.monitor.host(&form.id) else {
+            form.ready = false;
+            return;
+        };
+        host.read(|state| {
+            form.collector.clone_from(&state.collector);
+            let disks = state.view.sample.as_ref().map(|sample| sample.disks.as_slice());
+            form.ready = disks.is_some();
+            let script = crate::monitor::collector::script(&crate::monitor::collector::mounts(disks.unwrap_or_default()));
+            if form.script != script {
+                form.script = script;
+            }
+        });
     }
 
     /// A connection was saved: its watch starts again, with what changed
@@ -365,6 +403,21 @@ impl App {
                 }
             }
             "monitordetail" => self.monitor.dash.detail = named(self, argument),
+            // `monitorcollector NAME` opens the dialog of its collector;
+            // `monitorcollect NAME install` or `remove` does the job.
+            "monitorcollector" => {
+                if let Some(id) = named(self, argument) {
+                    self.apply_monitor(MonitorAction::Collector(id), now);
+                }
+            }
+            "monitorcollect" => {
+                use crate::monitor::collector::Job;
+                let (name, job) = argument.rsplit_once(' ').unwrap_or((argument, ""));
+                let job = if job == "remove" { Job::Remove } else { Job::Install };
+                if let Some(id) = named(self, name) {
+                    self.monitor.monitor.collector(&id, job);
+                }
+            }
             "monitorcustomize" => self.monitor.dash.customizing = !self.monitor.dash.customizing,
             // `monitorhistory NAME`: a made-up week behind it.
             "monitorhistory" => {

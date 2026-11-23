@@ -168,11 +168,25 @@ const COMMAND_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 /// until it ends. The connection stays open for the next one. No terminal
 /// is asked for, so programs print plain text.
 pub async fn run_command(handle: &SshHandle, command: &str) -> Result<CommandOutput> {
+    run(handle, command, None).await
+}
+
+/// Runs `command` with `input` on its standard input, then the end of it:
+/// a script for `sh -s`, say, which no login shell gets to quote.
+pub async fn run_with_input(handle: &SshHandle, command: &str, input: &[u8]) -> Result<CommandOutput> {
+    run(handle, command, Some(input)).await
+}
+
+async fn run(handle: &SshHandle, command: &str, input: Option<&[u8]>) -> Result<CommandOutput> {
     let mut channel = handle
         .channel_open_session()
         .await
         .context(tr!("ouverture d'un canal impossible"))?;
     channel.exec(true, command).await?;
+    if let Some(input) = input {
+        channel.data(input).await?;
+        channel.eof().await?;
+    }
     let mut output = CommandOutput {
         stdout: Vec::new(),
         stderr: Vec::new(),

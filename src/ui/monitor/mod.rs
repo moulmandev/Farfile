@@ -5,10 +5,12 @@
 //! ([`wall`]). A click on a server shows it in full ([`detail`]).
 //!
 //! Also its entry in the sidebar, what it adds to the menu of a connection,
-//! and its dialogs ([`dialogs`]).
+//! and its dialogs ([`dialogs`], and [`collector`] for the history kept on
+//! a server while Farfile is closed).
 
 mod cards;
 mod charts;
+mod collector;
 mod compare;
 mod detail;
 mod dialogs;
@@ -24,6 +26,7 @@ use egui::{
     UiBuilder, pos2, vec2,
 };
 
+pub use collector::CollectorForm;
 pub use dialogs::{MonitorDialog, PickForm, SettingsForm, dialog};
 
 use super::Action;
@@ -47,6 +50,9 @@ pub enum MonitorAction {
     Watch(String, bool),
     /// Try again a watch paused after a refused login.
     Retry(String),
+    /// The dialog of the collector of this server: the history it keeps
+    /// while Farfile is closed.
+    Collector(String),
     ClearJournal,
     /// The view or the widgets changed: keep them.
     Prefs(Box<DashboardPrefs>),
@@ -132,6 +138,7 @@ pub(super) struct Snap {
     pub alerts: Vec<(Metric, Active)>,
     /// Seconds out of reach.
     pub unreachable_for: Option<f64>,
+    pub collector: crate::monitor::collector::Collector,
 }
 
 impl Snap {
@@ -155,6 +162,7 @@ impl Snap {
             worst: state.worst(),
             alerts: state.alerts.clone(),
             unreachable_for: state.unreachable_since.map(|since| since.elapsed().as_secs_f64()),
+            collector: state.collector.clone(),
             ..Snap::default()
         };
         if let Some(sample) = sample {
@@ -536,6 +544,10 @@ pub(super) fn server_menu(ui: &mut Ui, profile: &Profile, state: &mut DashState,
         (
             format!("{}  {}", icon::SLIDERS_HORIZONTAL, tr!("Seuils de cette machine…")),
             Action::Monitor(MonitorAction::Settings(Some(id.clone()))),
+        ),
+        (
+            format!("{}  {}", icon::CLOCK_COUNTER_CLOCKWISE, tr!("Historique hors connexion…")),
+            Action::Monitor(MonitorAction::Collector(id.clone())),
         ),
     ];
     for (text, action) in entries {

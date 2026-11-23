@@ -5,7 +5,7 @@
 use egui::{Align, Button, Frame, Id, Layout, Rect, RichText, ScrollArea, Sense, Stroke, Ui, pos2, vec2};
 
 use super::charts::{self, Line, Scale};
-use super::{Action, DashState, Dashboard, MonitorAction, Row, chips, journal, measure_scale, range_choice, trouble};
+use super::{Action, DashState, Dashboard, MonitorAction, Row, chips, collector, journal, measure_scale, range_choice, trouble};
 use crate::monitor::dashboard::{DashboardPrefs, Measure};
 use crate::monitor::history::{self, Point};
 use crate::ssh_power::stats::{decimal, percent, uptime_text};
@@ -80,7 +80,9 @@ pub(super) fn show(
             actions.push(Action::Monitor(MonitorAction::Settings(Some(id))));
         }
     });
-    ui.add_space(10.0);
+    ui.add_space(2.0);
+    collector::line(ui, p, row, actions);
+    ui.add_space(8.0);
 
     let range = prefs.range;
     let now = history::now();

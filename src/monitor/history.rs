@@ -3,9 +3,11 @@
 //! minute by minute and the last week ten minutes at a time; and how full
 //! its disks were, every quarter of an hour, to tell when one will be full.
 //!
-//! It is saved next to the other local data of the app (see [`save`]), so
-//! that the curves survive a restart. Only what Farfile saw is there: hours
-//! it was closed leave a gap, which the charts draw as one.
+//! It is saved next to the other local data of the app (see [`write`]), so
+//! that the curves survive a restart. Only what Farfile saw is there, and
+//! what the collector of the server noted meanwhile when it has one (see
+//! [`super::collector`]): otherwise hours it was closed leave a gap, which
+//! the charts draw as one.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
@@ -159,6 +161,9 @@ pub struct History {
     ten: Option<Bucket>,
     /// By mount point.
     disks: BTreeMap<String, VecDeque<DiskSample>>,
+    /// When the latest reading was taken, in Unix seconds (0: none, or a
+    /// file written before it was kept).
+    last: i64,
 }
 
 fn trim(points: &mut VecDeque<Point>, keep: i64, now: i64) {
@@ -196,6 +201,7 @@ impl History {
             self.recent.clear();
         }
         self.recent.push_back(point);
+        self.last = now;
         trim(&mut self.recent, RECENT, now);
         roll(&mut self.minute, &mut self.minutes, &point, MINUTE);
         trim(&mut self.minutes, MINUTES, now);
@@ -235,6 +241,20 @@ impl History {
             chosen.push(bucket.point(width));
         }
         chosen
+    }
+
+    /// When the latest reading was taken: what came after is missing.
+    pub fn last_at(&self) -> Option<i64> {
+        if self.last > 0 {
+            return Some(self.last);
+        }
+        // A file of an older version: the end of its finest series.
+        let bucket = |bucket: &Option<Bucket>, width: i64| bucket.as_ref().map(|bucket| bucket.start + width - 1);
+        self.recent
+            .back()
+            .map(|point| point.at)
+            .or_else(|| bucket(&self.minute, MINUTE))
+            .or_else(|| bucket(&self.ten, TEN))
     }
 
     /// The readings of the last half hour.
@@ -505,6 +525,22 @@ mod tests {
         assert_eq!(lenient.recent().len(), 1);
         // Tests never write the user's files.
         assert_eq!(serialize(&history), None);
+    }
+
+    #[test]
+    fn the_last_reading_is_known_even_from_an_older_file() {
+        let mut history = History::default();
+        assert_eq!(history.last_at(), None);
+        history.add(reading(1_700_000_010, 0.5), &[]);
+        history.add(reading(1_700_000_070, 0.5), &[]);
+        assert_eq!(history.last_at(), Some(1_700_000_070));
+        let back: History = serde_json::from_str(&serde_json::to_string(&history).unwrap()).unwrap();
+        assert_eq!(back.last_at(), Some(1_700_000_070));
+
+        let mut older: History = serde_json::from_str(r#"{"minute":{"start":1700000040,"sums":[0,0,0,0,0,0],"counts":[0,0,0,0,0,0]}}"#).unwrap();
+        assert_eq!(older.last_at(), Some(1_700_000_099), "the end of its minute");
+        older.recent.push_back(reading(1_700_000_070, 0.1));
+        assert_eq!(older.last_at(), Some(1_700_000_070));
     }
 
     #[test]

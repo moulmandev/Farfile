@@ -236,7 +236,7 @@ fn parse_meminfo(lines: &[&str]) -> Option<Memory> {
 
 /// Interfaces whose traffic also goes through another one, or that never
 /// leave the machine: counting them would count bytes twice.
-const VIRTUAL_INTERFACES: [&str; 22] = [
+pub(crate) const VIRTUAL_INTERFACES: [&str; 22] = [
     "lo", "veth", "docker", "br", "vmbr", "virbr", "cni", "flannel", "cali", "vxlan", "kube", "tunl", "dummy",
     "lxc", "vnet", "tap", "tun", "wg", "tailscale", "zt", "ifb", "bond",
 ];

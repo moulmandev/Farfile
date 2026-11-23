@@ -16,12 +16,14 @@ use crate::theme::{Palette, semibold};
 pub enum MonitorDialog {
     Pick(PickForm),
     Settings(Box<SettingsForm>),
+    Collector(Box<super::CollectorForm>),
 }
 
 pub fn dialog(ui: &mut Ui, p: &Palette, dialog: &mut MonitorDialog, first_frame: bool, outcome: &mut Outcome) {
     match dialog {
         MonitorDialog::Pick(form) => pick_form(ui, p, form, first_frame, outcome),
         MonitorDialog::Settings(form) => settings_form(ui, p, form, outcome),
+        MonitorDialog::Collector(form) => super::collector::dialog(ui, p, form, outcome),
     }
 }
 

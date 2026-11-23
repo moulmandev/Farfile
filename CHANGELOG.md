@@ -3,6 +3,19 @@
 Each release's section here becomes its notes on GitHub, and what the update
 dialog shows. Add a `## x.y.z` section before tagging `vx.y.z`.
 
+## 0.4.0
+
+- Monitoring: history kept while Farfile is closed, for the servers you
+  choose (**Historique hors connexion…** in the menu of a server, or on its
+  page). A short script, run by cron once a minute, writes one line on the
+  processor, memory, load and network of the server, and its disks every
+  quarter of an hour, in `~/.local/share/farfile` for eight days at most.
+  Farfile reads them back when it connects again, and the charts have no
+  gap. Nothing stays running and nothing is sent: about 2 ms of processor a
+  minute, 100 KB a day. No administrator rights needed; the line it adds to
+  the crontab goes with it when it is removed, the other lines untouched.
+  Updated by itself when a new version or new disks need it
+
 ## 0.3.0
 
 - Monitoring: five views of the dashboard, chosen at its top and kept for

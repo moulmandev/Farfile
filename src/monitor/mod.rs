@@ -12,8 +12,14 @@
 //! nothing. A login it refuses is not: the watch then pauses until the user
 //! asks for another try, so that a wrong password never adds up to a ban
 //! (fail2ban and the like).
+//!
+//! On every new connection, before its first reading, the watch also reads
+//! what the [`collector`] of the server noted while nobody was reading it,
+//! when the user installed one; installing and removing it go through the
+//! same connection.
 
 pub mod alerts;
+pub mod collector;
 pub mod dashboard;
 pub mod history;
 pub mod notify;
@@ -35,6 +41,7 @@ use crate::ssh_power::stats::{self, Sample, Status, View};
 use crate::storage::ssh::{self, SshHandle, SshSettings};
 use crate::worker::Worker;
 use alerts::{Active, Change, Level, Metric, Rules, Tracker};
+use collector::{Collector, Job};
 
 /// The id of the dashboard's tab, where a connection's would be.
 pub const ID: &str = "monitor";
@@ -59,6 +66,10 @@ const MAX_RETRY: Duration = Duration::from_secs(60);
 const UNSUPPORTED_INTERVAL: Duration = Duration::from_secs(300);
 /// A paused watch waits for the user.
 const PAUSED: Duration = Duration::from_secs(24 * 3600);
+/// Reading what the collector noted: up to eight days of lines.
+const SYNC_TIMEOUT: Duration = Duration::from_secs(60);
+/// Installing or removing the collector.
+const JOB_TIMEOUT: Duration = Duration::from_secs(30);
 /// Between two savings of the history of a server.
 const SAVE_EVERY: Duration = Duration::from_secs(5 * 60);
 /// Alerts kept in the journal of the dashboard.
@@ -165,6 +176,8 @@ pub struct HostState {
     pub unreachable_since: Option<Instant>,
     /// The login was refused: the watch waits for the user, with why.
     pub paused: Option<String>,
+    /// What keeps the history on the server while Farfile is away.
+    pub collector: Collector,
 }
 
 impl HostState {
@@ -184,6 +197,10 @@ pub struct Host {
     name: Mutex<String>,
     state: Mutex<HostState>,
     rules: Mutex<Rules>,
+    /// What the user asked of the collector, done after the next reading.
+    job: Mutex<Option<Job>>,
+    /// Rings when there is a job: the next reading comes at once.
+    poke: Notify,
 }
 
 impl Host {
@@ -305,6 +322,9 @@ struct Hub {
     wake: Notify,
     settings: Mutex<HubSettings>,
     events: Mutex<Sender<Alert>>,
+    /// How the jobs of the collectors ended, for the corner of the window:
+    /// the text, and whether it is a failure.
+    notes: Mutex<Vec<(String, bool)>>,
     ctx: egui::Context,
 }
 
@@ -349,6 +369,11 @@ impl Hub {
         let _ = lock(&self.events).send(alert);
         self.ctx.request_repaint();
     }
+
+    fn note(&self, text: String, failed: bool) {
+        lock(&self.notes).push((text, failed));
+        self.ctx.request_repaint();
+    }
 }
 
 /// A watch under way. Dropping it stops its task and closes its
@@ -383,6 +408,7 @@ impl Monitor {
                     interval: settings.background_interval(),
                 }),
                 events: Mutex::new(sender),
+                notes: Mutex::new(Vec::new()),
                 ctx: ctx.clone(),
             }),
             watches: BTreeMap::new(),
@@ -427,6 +453,8 @@ impl Monitor {
             name: Mutex::new(name.to_owned()),
             state: Mutex::new(HostState::default()),
             rules: Mutex::new(rules.clone()),
+            job: Mutex::new(None),
+            poke: Notify::new(),
         });
         let (stop, stopped) = oneshot::channel();
         worker.spawn(watch(settings, host.clone(), self.hub.clone(), stopped));
@@ -495,6 +523,25 @@ impl Monitor {
         fresh
     }
 
+    /// Installs or removes the collector of this server, through its watch,
+    /// after its next reading.
+    pub fn collector(&self, id: &str, job: Job) {
+        let Some(watch) = self.watches.get(id) else {
+            return;
+        };
+        *lock(&watch.host.job) = Some(job);
+        let mut state = lock(&watch.host.state);
+        state.collector.busy = Some(job);
+        state.collector.error = None;
+        drop(state);
+        watch.host.poke.notify_one();
+    }
+
+    /// How the jobs of the collectors ended since the last call.
+    pub fn take_notes(&self) -> Vec<(String, bool)> {
+        std::mem::take(&mut *lock(&self.hub.notes))
+    }
+
     /// The servers with an alert under way: critical ones, then warnings.
     pub fn counts(&self) -> (usize, usize) {
         let mut counts = (0, 0);
@@ -560,19 +607,28 @@ async fn watch(settings: Arc<SshSettings>, host: Arc<Host>, hub: Arc<Hub>, mut s
     let loaded = tokio::task::spawn_blocking(move || history::load(&id, history::now())).await.unwrap_or_default();
     lock(&host.state).history = loaded;
     let mut saved_at = Instant::now();
+    // The collector was looked after on this connection.
+    let mut tended = false;
     loop {
         tokio::select! {
             _ = &mut stop => break,
             _ = tokio::time::sleep(delay) => {}
             _ = hub.wake.notified() => {}
+            _ = host.poke.notified() => {}
         }
         if lock(&host.state).paused.is_some() {
+            if lock(&host.job).take().is_some() {
+                let mut state = lock(&host.state);
+                state.collector.busy = None;
+                state.collector.error = Some(tr!("la surveillance de ce serveur est en pause").to_owned());
+            }
             delay = PAUSED;
             continue;
         }
 
         let rules = host.rules();
-        let reading = read(&settings, &mut connection).await;
+        let reading = read(&settings, &mut connection, &host, &mut tended).await;
+        let read_well = reading.is_ok();
         let now = Instant::now();
         // The lock ends with this block, before anything is awaited.
         let happenings = {
@@ -622,6 +678,9 @@ async fn watch(settings: Arc<SshSettings>, host: Arc<Host>, hub: Arc<Hub>, mut s
         for happening in happenings {
             hub.report(&host, happening);
         }
+        if read_well && let Some(handle) = connection.as_ref() {
+            tend(handle, &host, &hub, &mut tended).await;
+        }
         hub.ctx.request_repaint();
         if saved_at.elapsed() >= SAVE_EVERY {
             saved_at = Instant::now();
@@ -667,8 +726,14 @@ fn remember(state: &mut HostState) {
     state.history.add(point, &disks);
 }
 
-/// Runs the script, connecting and logging in first when needed.
-async fn read(settings: &SshSettings, connection: &mut Option<SshHandle>) -> Result<String, Failure> {
+/// Runs the script, connecting and logging in first when needed; a new
+/// connection first reads what the collector noted.
+async fn read(
+    settings: &SshSettings,
+    connection: &mut Option<SshHandle>,
+    host: &Host,
+    tended: &mut bool,
+) -> Result<String, Failure> {
     if connection.as_ref().is_none_or(|handle| handle.is_closed()) {
         *connection = None;
         // A connection that cannot be built is not a refusal of the server,
@@ -681,6 +746,9 @@ async fn read(settings: &SshSettings, connection: &mut Option<SshHandle>) -> Res
             .map_err(|_| Failure::Unreachable(anyhow!(tr!("le serveur {host} ne répond pas", host = settings.host))))?
             .map_err(Failure::Unreachable)?;
         crate::ssh_auth::authenticate(&mut handle, settings).await.map_err(Failure::Refused)?;
+        // Before the readings that follow, which come after it in time.
+        sync(&handle, host, true).await;
+        *tended = false;
         *connection = Some(handle);
     }
     let Some(handle) = connection.as_ref() else {
@@ -696,6 +764,92 @@ async fn read(settings: &SshSettings, connection: &mut Option<SshHandle>) -> Res
             Err(Failure::Unreachable(error))
         }
     }
+}
+
+/// Asks the collector of the server for the lines written after the
+/// latest reading, and adds them to the history; and what is known of the
+/// collector. `connecting`: at the start of a connection, when what it
+/// brings back is worth telling.
+async fn sync(handle: &SshHandle, host: &Host, connecting: bool) {
+    let since = lock(&host.state).history.last_at();
+    let probe = collector::probe(since);
+    let output = tokio::time::timeout(SYNC_TIMEOUT, ssh::run_with_input(handle, collector::SHELL, probe.as_bytes())).await;
+    let Ok(Ok(output)) = output else {
+        return;
+    };
+    let now = history::now();
+    let probe = collector::parse_probe(&String::from_utf8_lossy(&output.stdout));
+    // The server's clock may be off: its lines go where ours would.
+    let offset = probe.now.map_or(0, |server| now - server);
+    let mut state = lock(&host.state);
+    let after = state.history.last_at().unwrap_or(i64::MIN);
+    let points = collector::backfill(&probe.lines, offset, after, now);
+    for (point, disks) in &points {
+        state.history.add(*point, disks);
+    }
+    let found = probe.found(offset, now);
+    if found == collector::Found::Unknown {
+        return;
+    }
+    state.collector.found = found;
+    state.collector.header = probe.header;
+    if connecting {
+        state.collector.recovered = (!points.is_empty()).then(|| points.len().try_into().unwrap_or(u32::MAX));
+    }
+}
+
+/// After a good reading: what the user asked of the collector; or, once a
+/// connection, its update when its version or the disks changed.
+async fn tend(handle: &SshHandle, host: &Host, hub: &Hub, tended: &mut bool) {
+    let first = !std::mem::replace(tended, true);
+    let job = lock(&host.job).take();
+    if job.is_none() && !first {
+        return;
+    }
+    let (mounts, read, header, installed) = {
+        let state = lock(&host.state);
+        let sample = state.view.sample.as_ref();
+        let mounts = sample.map(|sample| collector::mounts(&sample.disks)).unwrap_or_default();
+        (mounts, sample.is_some(), state.collector.header.clone(), state.collector.found.is_installed())
+    };
+    let script = collector::script(&mounts);
+    let outdated = installed && read && !mounts.is_empty() && header.as_deref() != collector::header(&script);
+    let (text, argument) = match job {
+        Some(Job::Install) => collector::install(&script, false),
+        Some(Job::Remove) => (collector::remove(), ""),
+        None if outdated => collector::install(&script, true),
+        None => return,
+    };
+    let command = format!("{} {argument}", collector::SHELL);
+    let output = tokio::time::timeout(JOB_TIMEOUT, ssh::run_with_input(handle, command.trim_end(), text.as_bytes())).await;
+    let (outcome, cron) = match output {
+        Ok(Ok(output)) => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            (collector::reply(&text), collector::cron_in(&text))
+        }
+        Ok(Err(error)) => (Err(format!("{error:#}")), None),
+        Err(_) => (Err(tr!("le serveur ne répond plus").to_owned()), None),
+    };
+    sync(handle, host, false).await;
+    let Some(job) = job else {
+        return;
+    };
+    {
+        let mut state = lock(&host.state);
+        state.collector.busy = None;
+        state.collector.error = outcome.as_ref().err().cloned();
+        // The probe does not read the crontab: what the install learnt of it stays.
+        if let Some(cron) = cron.filter(|_| !state.collector.found.is_installed()) {
+            state.collector.found = collector::Found::Absent { cron };
+        }
+    }
+    let name = host.name();
+    let (text, failed) = match (job, outcome) {
+        (Job::Install, Ok(())) => (tr!("Historique hors connexion activé sur « {name} »", name), false),
+        (Job::Remove, Ok(())) => (tr!("Historique hors connexion retiré de « {name} »", name), false),
+        (_, Err(error)) => (tr!("Historique hors connexion de « {name} » : {error}", name, error), true),
+    };
+    hub.note(text, failed);
 }
 
 #[cfg(test)]
@@ -747,6 +901,11 @@ mod tests {
     /// as in `storage::live_tests`.
     fn live_server() -> Option<SshSettings> {
         let value = std::env::var("S3V_TEST_SFTP").ok().filter(|value| !value.is_empty())?;
+        server(&value)
+    }
+
+    /// `user:password@host:port`.
+    fn server(value: &str) -> Option<SshSettings> {
         let (credentials, address) = value.rsplit_once('@')?;
         let (user, secret) = credentials.split_once(':')?;
         let (host, port) = address.rsplit_once(':')?;
@@ -809,5 +968,150 @@ mod tests {
         assert!(matches!(refused.happening, Happening::Refused(_)));
         assert_eq!(alerts.iter().filter(|alert| alert.profile_id == "wrong").count(), 1, "tried once");
         assert_eq!(monitor.counts(), (1, 1));
+    }
+
+    /// The live tests of the collector share the servers they install it on.
+    static COLLECTOR_SERVERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Runs one of the scripts of the collector, as the watch does.
+    async fn send(handle: &SshHandle, text: &str, argument: &str) -> String {
+        let command = format!("{} {argument}", collector::SHELL);
+        let output = ssh::run_with_input(handle, command.trim_end(), text.as_bytes()).await.unwrap();
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    async fn shell(handle: &SshHandle, command: &str) -> String {
+        let output = ssh::run_command(handle, command).await.unwrap();
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    /// Against real servers (`S3V_TEST_COLLECTOR`: `user:password@host:port`,
+    /// separated by commas): the collector goes in next to the lines of the
+    /// crontab already there, writes lines that read as the live readings
+    /// do, updates in place, and leaves the crontab as it found it.
+    #[test]
+    fn a_live_collector_goes_in_writes_and_goes() {
+        let Some(list) = std::env::var("S3V_TEST_COLLECTOR").ok().filter(|value| !value.is_empty()) else {
+            eprintln!("S3V_TEST_COLLECTOR not set: skipped");
+            return;
+        };
+        let _turn = lock(&COLLECTOR_SERVERS);
+        let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        for address in list.split(',') {
+            let settings = server(address).expect("user:password@host:port");
+            runtime.block_on(async {
+                let handle = ssh::connect(&settings).await.unwrap();
+                assert_eq!(collector::reply(&send(&handle, &collector::remove(), "").await), Ok(()), "{address}");
+                let before = shell(&handle, "crontab -l 2>/dev/null").await;
+                let probe = collector::parse_probe(&send(&handle, &collector::probe(None), "").await);
+                assert_eq!(probe.found(0, 0), collector::Found::Absent { cron: collector::Cron::Usable }, "{address}");
+                let sample = stats::parse(&shell(&handle, stats::COMMAND).await);
+                let mounts = collector::mounts(&sample.disks);
+                assert!(!mounts.is_empty(), "{address}: disks seen live");
+                let script = collector::script(&mounts);
+                let (text, argument) = collector::install(&script, false);
+                let reply = send(&handle, &text, argument).await;
+                if collector::cron_in(&reply) == Some(collector::Cron::Denied) {
+                    // An account cron refuses: told so, and nothing left behind.
+                    assert_eq!(shell(&handle, "ls -d .local/share/farfile 2>/dev/null").await, "");
+                    assert_eq!(shell(&handle, "crontab -l 2>/dev/null").await, before);
+                    eprintln!("{address}: cron refuses this account, as said");
+                    return;
+                }
+                for _ in 0..2 {
+                    let (text, argument) = collector::install(&script, false);
+                    let reply = send(&handle, &text, argument).await;
+                    assert_eq!(collector::reply(&reply), Ok(()), "{address}: {reply}");
+                }
+                let installed = shell(&handle, "crontab -l").await;
+                assert_eq!(installed.matches("farfile/collect").count(), 1, "{address}: once\n{installed}");
+                for line in before.lines().filter(|line| !line.starts_with("# DO NOT EDIT")) {
+                    assert!(installed.lines().any(|kept| kept == line), "{address}: {line:?} kept\n{installed}");
+                }
+
+                // Two more lines, a second apart at least, as cron would add them.
+                for _ in 0..2 {
+                    tokio::time::sleep(Duration::from_millis(1100)).await;
+                    shell(&handle, "sh .local/share/farfile/collect").await;
+                }
+                let now = history::now();
+                let probe = collector::parse_probe(&send(&handle, &collector::probe(None), "").await);
+                let offset = now - probe.now.unwrap();
+                assert!(offset.abs() <= 2, "{address}: same clock in a container");
+                let found = probe.found(offset, now);
+                assert!(found.is_running(), "{address}: {found:?}");
+                assert_eq!(probe.header.as_deref(), collector::header(&script));
+                let points = collector::backfill(&probe.lines, offset, i64::MIN, now);
+                assert!(points.len() >= 3, "{address}: {:?}", probe.lines);
+                let (last, _) = points.last().unwrap();
+                assert!(last.cpu.is_some() && last.rx.is_some() && last.load.is_some(), "{address}: {last:?}");
+                let live = sample.memory.map(|memory| memory.used() as f32 / memory.total as f32).unwrap();
+                assert!((last.memory.unwrap() - live).abs() < 0.05, "{address}: memory {last:?} against {live}");
+                let live = stats::fullest(&sample.disks).unwrap().fraction();
+                assert!((last.disk.unwrap() - live).abs() < 0.01, "{address}: disk {last:?} against {live}");
+                let disks = &points.first().unwrap().1;
+                assert_eq!(collector::mounts(disks), mounts, "{address}: the install read the disks");
+
+                // An update leaves the crontab alone.
+                let (text, argument) = collector::install(&collector::script(&[]), true);
+                assert_eq!(collector::reply(&send(&handle, &text, argument).await), Ok(()));
+                assert_eq!(shell(&handle, "crontab -l").await, installed);
+                let probe = collector::parse_probe(&send(&handle, &collector::probe(Some(now)), "").await);
+                assert_ne!(probe.header.as_deref(), collector::header(&script), "{address}: updated");
+
+                assert_eq!(collector::reply(&send(&handle, &collector::remove(), "").await), Ok(()));
+                assert_eq!(shell(&handle, "crontab -l 2>/dev/null").await, before, "{address}: crontab as it was");
+                assert_eq!(shell(&handle, "ls -d .local/share/farfile 2>/dev/null").await, "");
+                let probe = collector::parse_probe(&send(&handle, &collector::probe(None), "").await);
+                assert_eq!(probe.found(0, 0), collector::Found::Absent { cron: collector::Cron::Usable });
+                eprintln!("{address}: {} points, {:?}", points.len(), points.last().unwrap().0);
+            });
+        }
+    }
+
+    /// The same through a watch: installed from the dashboard, read back
+    /// on the next connection, removed.
+    #[test]
+    fn a_live_watch_reads_back_its_collector() {
+        let Some(address) = std::env::var("S3V_TEST_COLLECTOR")
+            .ok()
+            .and_then(|list| list.split(',').next().map(str::to_owned))
+            .filter(|value| !value.is_empty())
+        else {
+            eprintln!("S3V_TEST_COLLECTOR not set: skipped");
+            return;
+        };
+        let _turn = lock(&COLLECTOR_SERVERS);
+        let settings = Arc::new(server(&address).unwrap());
+        let ctx = egui::Context::default();
+        let (worker, _events) = Worker::new(ctx.clone());
+        let mut monitor = Monitor::new(&ctx, &MonitorSettings::default());
+        let rules = Rules::default();
+        let wait = |monitor: &Monitor, what: &str, done: &dyn Fn(&HostState) -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while !monitor.host("s").unwrap().read(done) {
+                assert!(Instant::now() < deadline, "{what}");
+                monitor.mark_seen();
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        };
+        monitor.start(&worker, "s", "Serveur", "1".to_owned(), &rules, settings.clone());
+        wait(&monitor, "first reading", &|state| state.view.sample.is_some());
+        monitor.collector("s", Job::Install);
+        wait(&monitor, "installed", &|state| state.collector.busy.is_none() && state.collector.found.is_installed());
+        assert_eq!(monitor.host("s").unwrap().read(|state| state.collector.error.clone()), None);
+
+        // A new connection, with nothing in its history: the lines come back.
+        monitor.restart("s");
+        monitor.start(&worker, "s", "Serveur", "1".to_owned(), &rules, settings);
+        wait(&monitor, "read back", &|state| state.collector.recovered.is_some());
+        let (recovered, running) = monitor.host("s").unwrap().read(|state| (state.collector.recovered, state.collector.found.is_running()));
+        assert!(recovered >= Some(1) && running, "{recovered:?}");
+
+        monitor.collector("s", Job::Remove);
+        wait(&monitor, "removed", &|state| state.collector.busy.is_none() && !state.collector.found.is_installed());
+        let notes = monitor.take_notes();
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        assert!(notes.iter().all(|(_, failed)| !failed), "{notes:?}");
     }
 }
